@@ -67,7 +67,7 @@ export default function BookingFlowPage() {
           serviceService.getRoomType(serviceId),
           serviceService.getExtraServices(),
         ]);
-        if (roomRes.data) setRoomType(roomRes.data);
+        if (roomRes.data) setRoomType(roomRes.data.room_type);
         if (extrasRes.data) setExtraServices(extrasRes.data);
       } catch (err) {
         toast.error('Gagal memuat detail tipe kamar.');

@@ -1,0 +1,27 @@
+# Claude Code (local AI assistant files)
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+
+# Environment files (secrets). Keep the *.example templates.
+.env
+.env.*
+!.env.example
+
+# Databases and dumps (can contain customer data)
+*.sql
+*.sqlite
+*.sqlite3
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

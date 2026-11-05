@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, matchPath } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 
@@ -31,11 +31,46 @@ import AdminCustomersPage from './pages/admin/AdminCustomersPage';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import AdminReportsPage from './pages/admin/AdminReportsPage';
 
+const SITE_NAME = 'The Royal Nusantara';
+
+// Browser tab title for each route. Add new pages here.
+const PAGE_TITLES = [
+  ['/', 'Beranda'],
+  ['/services', 'Kamar & Suite'],
+  ['/book/:serviceId', 'Pesan Kamar'],
+  ['/payment-result/:paymentId', 'Hasil Pembayaran'],
+  ['/login', 'Masuk'],
+  ['/register', 'Daftar'],
+  ['/customer/dashboard', 'Reservasi Saya'],
+  ['/customer/profile', 'Profil Tamu'],
+  ['/admin/dashboard', 'Dashboard Admin'],
+  ['/admin/rooms', 'Unit Kamar'],
+  ['/admin/categories', 'Layanan Tambahan'],
+  ['/admin/services', 'Tipe Kamar'],
+  ['/admin/schedules', 'Profil Hotel'],
+  ['/admin/bookings', 'Front Desk & Reservasi'],
+  ['/admin/customers', 'Data Pelanggan'],
+  ['/admin/payments', 'Pembayaran'],
+  ['/admin/reports', 'Laporan'],
+];
+
+function DocumentTitle() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    const match = PAGE_TITLES.find(([path]) => matchPath({ path, end: true }, pathname));
+    document.title = match ? `${match[1]} | ${SITE_NAME}` : SITE_NAME;
+  }, [pathname]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
+          <DocumentTitle />
           <Routes>
             {/* Public Website */}
             <Route element={<PublicLayout />}>

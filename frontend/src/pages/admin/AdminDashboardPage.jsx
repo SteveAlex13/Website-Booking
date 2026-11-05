@@ -232,7 +232,7 @@ export default function AdminDashboardPage() {
 
           <div className="h-64 w-full pt-4">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueTrend}>
+              <AreaChart data={revenue_trend}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#d97706" stopOpacity={0.4} />
@@ -275,10 +275,10 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="space-y-3">
-              {recentBookings.length === 0 ? (
+              {recent_bookings.length === 0 ? (
                 <p className="text-xs text-slate-400 py-6 text-center">Belum ada reservasi masuk.</p>
               ) : (
-                recentBookings.map((b) => {
+                recent_bookings.map((b) => {
                   const cfg = BOOKING_STATUS_CONFIG[b.status] || BOOKING_STATUS_CONFIG.PENDING_PAYMENT;
                   return (
                     <div

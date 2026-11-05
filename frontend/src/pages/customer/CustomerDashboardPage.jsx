@@ -30,6 +30,50 @@ const CANCELLATION_REASONS = [
   'Lainnya',
 ];
 
+function PaymentCountdown({ expiresAt, onExpire }) {
+  const getRemaining = () =>
+    Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+
+  const [remaining, setRemaining] = useState(getRemaining);
+
+  useEffect(() => {
+    setRemaining(getRemaining());
+    const timer = setInterval(() => {
+      const next = getRemaining();
+      setRemaining(next);
+      if (next <= 0) {
+        clearInterval(timer);
+        if (onExpire) onExpire();
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [expiresAt]);
+
+  if (remaining <= 0) {
+    return (
+      <div className="mt-3 p-2.5 rounded-xl bg-rose-50/70 border border-rose-200/80 text-[11px] text-rose-800 flex items-center space-x-2">
+        <XCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+        <span>Waktu pembayaran habis. Reservasi ini akan kedaluwarsa.</span>
+      </div>
+    );
+  }
+
+  const minutes = String(Math.floor(remaining / 60)).padStart(2, '0');
+  const seconds = String(remaining % 60).padStart(2, '0');
+
+  return (
+    <div className="mt-3 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-[11px] text-amber-800 flex items-center justify-between">
+      <div className="flex items-center space-x-2">
+        <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+        <span>Sisa waktu pembayaran. Kamar diamankan sementara untuk Anda.</span>
+      </div>
+      <span className="font-mono text-base font-black text-amber-900 tabular-nums">
+        {minutes}:{seconds}
+      </span>
+    </div>
+  );
+}
+
 export default function CustomerDashboardPage() {
   const toast = useToast();
   const [bookings, setBookings] = useState([]);
@@ -340,7 +384,10 @@ export default function CustomerDashboardPage() {
                   </div>
 
                   {/* Pending payment notice */}
-                  {isPending && (
+                  {isPending && b.expires_at && (
+                    <PaymentCountdown expiresAt={b.expires_at} onExpire={fetchBookings} />
+                  )}
+                  {isPending && !b.expires_at && (
                     <div className="mt-3 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-[11px] text-amber-800 flex items-center space-x-2">
                       <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
                       <span>Batas pembayaran 15 menit. Kamar diamankan sementara untuk Anda.</span>
