@@ -1,11 +1,13 @@
 export function formatRupiah(amount) {
-  if (amount === undefined || amount === null) return 'Rp 0';
+  if (amount === undefined || amount === null || amount === '') return 'Rp 0';
+  const num = Number(amount);
+  if (Number.isNaN(num)) return 'Rp 0';
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(num);
 }
 
 export function formatDate(dateString) {

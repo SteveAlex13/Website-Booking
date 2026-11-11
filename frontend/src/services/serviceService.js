@@ -26,6 +26,14 @@ export const serviceService = {
     return await api.post('/bookings/calculate-price', payload);
   },
 
+  async getActiveCoupons() {
+    return await api.get('/coupons/active');
+  },
+
+  async validateCoupon(code, subtotal = 0) {
+    return await api.post('/coupons/validate', { code, subtotal });
+  },
+
   async getRoomReviews(roomTypeId) {
     return await api.get(`/room-types/${roomTypeId}/reviews`);
   },

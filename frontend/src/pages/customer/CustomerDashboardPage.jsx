@@ -505,6 +505,12 @@ export default function CustomerDashboardPage() {
                   <span>Biaya Kamar:</span>
                   <span className="font-semibold text-slate-900">{formatRupiah(selectedBooking.room_amount || selectedBooking.total_amount * 0.9)}</span>
                 </div>
+                {Number(selectedBooking.discount_amount || 0) > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                    <span>Diskon Kupon Promo ({selectedBooking.discount_code}):</span>
+                    <span>-{formatRupiah(selectedBooking.discount_amount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-slate-600">
                   <span>Pajak & Layanan Hotel (10%):</span>
                   <span className="font-semibold text-slate-900">{formatRupiah(selectedBooking.tax_amount || selectedBooking.total_amount * 0.1)}</span>

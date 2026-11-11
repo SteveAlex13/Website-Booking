@@ -56,7 +56,13 @@ class PaymentController extends Controller
      */
     public function show(Request $request, int $id): JsonResponse
     {
-        $payment = Payment::with(['booking.service', 'booking.slot', 'logs'])->findOrFail($id);
+        $payment = Payment::with([
+            'booking.roomType',
+            'booking.assignedRoom',
+            'booking.extraItems',
+            'booking.discountCoupon',
+            'logs',
+        ])->findOrFail($id);
 
         if (! $request->user()->isAdmin() && $payment->booking->user_id !== $request->user()->id) {
             return response()->json([
@@ -101,7 +107,7 @@ class PaymentController extends Controller
      */
     public function adminIndex(Request $request): JsonResponse
     {
-        $query = Payment::with(['booking.user', 'booking.service']);
+        $query = Payment::with(['booking.user', 'booking.roomType', 'booking.assignedRoom']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);

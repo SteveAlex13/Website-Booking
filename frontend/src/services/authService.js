@@ -48,5 +48,13 @@ export const authService = {
   isAuthenticated() {
     return !!localStorage.getItem('auth_token');
   },
+
+  async getCancellationKey() {
+    return await api.get('/user/cancellation-key');
+  },
+
+  async generateCancellationKey() {
+    return await api.post('/user/generate-cancellation-key');
+  },
 };
 

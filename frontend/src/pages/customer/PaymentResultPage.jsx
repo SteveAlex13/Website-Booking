@@ -18,13 +18,19 @@ export default function PaymentResultPage() {
       try {
         await paymentService.checkStatus(paymentId);
       } catch (e) {
-        // Fallback
+        console.warn('Check midtrans status background notice:', e);
       }
 
       const res = await paymentService.getPayment(paymentId);
-      if (res.data) setPayment(res.data);
+      const paymentData = res.data || res;
+      if (paymentData && (paymentData.id || paymentData.order_id)) {
+        setPayment(paymentData);
+      } else {
+        setError('Data pembayaran tidak ditemukan.');
+      }
     } catch (err) {
-      setError('Gagal memuat status pembayaran.');
+      console.error('Fetch payment error:', err);
+      setError(err.response?.data?.message || 'Gagal memuat status pembayaran.');
     } finally {
       setLoading(false);
       setRefreshing(false);

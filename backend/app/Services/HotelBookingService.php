@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Booking;
 use App\Models\BookingExtraItem;
 use App\Models\BookingStatusHistory;
+use App\Models\DiscountCoupon;
 use App\Models\ExtraService;
 use App\Models\Room;
 use App\Models\RoomType;
@@ -92,21 +93,42 @@ class HotelBookingService
                 }
             }
 
-            // 5. Calculate taxes and final total (e.g. 10% tax & service)
+            // 5. Calculate discount (if coupon code provided)
             $subtotalBeforeTax = $totalRoomAmount + $totalExtrasAmount;
-            $taxAndService = round($subtotalBeforeTax * 0.10, 2);
-            $grandTotal = $subtotalBeforeTax + $taxAndService;
+            $discountCouponId = null;
+            $discountCode = null;
+            $discountAmount = 0.0;
 
-            // 6. Booking code & Expiration (15 minutes)
+            if (! empty($data['coupon_code'])) {
+                $code = strtoupper(trim($data['coupon_code']));
+                $coupon = DiscountCoupon::where('code', $code)->lockForUpdate()->first();
+                if ($coupon) {
+                    $check = $coupon->checkValidity($subtotalBeforeTax);
+                    if ($check['valid']) {
+                        $discountCouponId = $coupon->id;
+                        $discountCode = $coupon->code;
+                        $discountAmount = $coupon->calculateDiscount($subtotalBeforeTax);
+                        $coupon->increment('used_count');
+                    }
+                }
+            }
+
+            // 6. Calculate taxes and final total (10% tax on discounted amount)
+            $taxableSubtotal = max(0.0, $subtotalBeforeTax - $discountAmount);
+            $taxAndService = round($taxableSubtotal * 0.10, 2);
+            $grandTotal = round($taxableSubtotal + $taxAndService, 2);
+
+            // 7. Booking code & Expiration (15 minutes)
             $bookingCode = $this->generateUniqueBookingCode();
             $expirationMinutes = (int) config('midtrans.booking_expiration_minutes', 15);
             $expiresAt = Carbon::now()->addMinutes($expirationMinutes);
 
-            // 7. Persist Booking
+            // 8. Persist Booking
             $booking = Booking::create([
                 'booking_code' => $bookingCode,
                 'user_id' => $user->id,
                 'room_type_id' => $roomType->id,
+                'discount_coupon_id' => $discountCouponId,
                 'customer_name' => $data['customer_name'] ?? $user->name,
                 'customer_email' => $data['customer_email'] ?? $user->email,
                 'customer_phone' => $data['customer_phone'] ?? ($user->phone ?? '-'),
@@ -118,6 +140,8 @@ class HotelBookingService
                 'room_price_per_night' => $costDetails['average_price'],
                 'total_room_amount' => $totalRoomAmount,
                 'total_extras_amount' => $totalExtrasAmount,
+                'discount_code' => $discountCode,
+                'discount_amount' => $discountAmount,
                 'tax_and_service_amount' => $taxAndService,
                 'total_amount' => $grandTotal,
                 'special_requests' => $data['special_requests'] ?? null,

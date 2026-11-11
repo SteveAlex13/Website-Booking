@@ -88,6 +88,18 @@ export const adminService = {
     return await api.post(`/admin/bookings/${bookingId}/check-out`);
   },
 
+  async cancelBooking(bookingId, { cancellation_key, reason }) {
+    return await api.post(`/admin/bookings/${bookingId}/cancel`, { cancellation_key, reason });
+  },
+
+  async getCancellationKey() {
+    return await api.get('/user/cancellation-key');
+  },
+
+  async generateCancellationKey() {
+    return await api.post('/user/generate-cancellation-key');
+  },
+
   // Extra Services (Add-ons: Breakfast, Airport Pickup, etc.)
   async getExtraServices() {
     return await api.get('/extra-services');

@@ -213,13 +213,10 @@ export default function ServicesPage() {
         <div className="space-y-6">
           {safeRoomTypes.map((room) => {
             const isAvailable = room.available_count === undefined || room.available_count > 0;
-            const estimatedTotal = (room.base_price_per_night || 0) * nights;
+            const pricePerNight = Number(room.base_price_per_night) || 0;
+            const estimatedTotal = pricePerNight * nights;
 
-            const safeRoomTypes = Array.isArray(roomTypes)
-    ? roomTypes
-    : roomTypes?.room_types || roomTypes?.data || [];
-
-  return (
+            return (
               <div
                 key={room.id}
                 className="bg-white rounded-3xl border border-slate-200/90 overflow-hidden shadow-sm hover:shadow-lg transition flex flex-col lg:flex-row group"

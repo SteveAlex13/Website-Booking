@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Amenity;
 use App\Models\Booking;
 use App\Models\BookingStatusHistory;
+use App\Models\DiscountCoupon;
 use App\Models\ExtraService;
 use App\Models\Hotel;
 use App\Models\Payment;
@@ -28,6 +29,7 @@ class DatabaseSeeder extends Seeder
                 'phone' => '081234567890',
                 'password' => Hash::make('password123'),
                 'role' => 'super_admin',
+                'cancellation_key' => 'ROYAL-CANCEL-8888',
                 'email_verified_at' => now(),
             ]
         );
@@ -106,8 +108,8 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Deluxe Ocean View King Room',
                 'slug' => 'deluxe-ocean-view-king-room',
                 'description' => 'Kamar modern seluas 38 meter persegi dengan ranjang King size, balkon pribadi menghadap panorama samudra biru, dan kamar mandi marmer mewah.',
-                'base_price_per_night' => 850000,
-                'weekend_price_per_night' => 950000,
+                'base_price_per_night' => 10000,
+                'weekend_price_per_night' => 10000,
                 'max_adults' => 2,
                 'max_children' => 1,
                 'room_size_sqm' => 38,
@@ -254,6 +256,54 @@ class DatabaseSeeder extends Seeder
 
         foreach ($extrasData as $ex) {
             ExtraService::updateOrCreate(['name' => $ex['name']], $ex);
+        }
+
+        // 5b. Discount Coupons
+        $couponsData = [
+            [
+                'code' => 'ROYALVIP',
+                'name' => 'Diskon VIP Royal 15%',
+                'type' => 'percentage',
+                'value' => 15,
+                'min_spend' => 0,
+                'max_discount' => 1000000,
+                'usage_limit' => 1000,
+                'is_active' => true,
+            ],
+            [
+                'code' => 'DISKON10',
+                'name' => 'Diskon Spesial Menginap 10%',
+                'type' => 'percentage',
+                'value' => 10,
+                'min_spend' => 0,
+                'max_discount' => null,
+                'usage_limit' => 500,
+                'is_active' => true,
+            ],
+            [
+                'code' => 'HEMAT100',
+                'name' => 'Potongan Langsung Rp 100.000',
+                'type' => 'fixed',
+                'value' => 100000,
+                'min_spend' => 500000,
+                'max_discount' => null,
+                'usage_limit' => 500,
+                'is_active' => true,
+            ],
+            [
+                'code' => 'LIBURAN20',
+                'name' => 'Promo Liburan Hebat 20%',
+                'type' => 'percentage',
+                'value' => 20,
+                'min_spend' => 1500000,
+                'max_discount' => 500000,
+                'usage_limit' => 300,
+                'is_active' => true,
+            ],
+        ];
+
+        foreach ($couponsData as $cp) {
+            DiscountCoupon::updateOrCreate(['code' => $cp['code']], $cp);
         }
 
         // 6. Sample Initial Bookings for Demo

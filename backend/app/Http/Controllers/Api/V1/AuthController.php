@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -123,6 +124,59 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Profil berhasil diperbarui.',
             'data' => $user,
+        ]);
+    }
+
+    /**
+     * Get active cancellation confirmation key (Super Admin only).
+     */
+    public function getCancellationKey(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user->isSuperAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak. Hanya Super Admin yang memiliki wewenang mengelola Key Otorisasi Pembatalan.',
+            ], 403);
+        }
+
+        if (empty($user->cancellation_key)) {
+            $user->cancellation_key = 'ROYAL-CANCEL-' . strtoupper(Str::random(6));
+            $user->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'cancellation_key' => $user->cancellation_key,
+            ],
+        ]);
+    }
+
+    /**
+     * Generate / Rotate new cancellation confirmation key (Super Admin only).
+     */
+    public function generateCancellationKey(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user->isSuperAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak. Hanya Super Admin yang berhak men-generate Key Pembatalan baru.',
+            ], 403);
+        }
+
+        $user->cancellation_key = 'ROYAL-CANCEL-' . strtoupper(Str::random(6));
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Key Otorisasi Pembatalan baru berhasil dibuat.',
+            'data' => [
+                'cancellation_key' => $user->cancellation_key,
+            ],
         ]);
     }
 }

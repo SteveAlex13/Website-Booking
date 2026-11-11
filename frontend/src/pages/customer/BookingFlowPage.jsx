@@ -23,6 +23,9 @@ import {
   Plus,
   Minus,
   DoorOpen,
+  Tag,
+  TicketPercent,
+  X,
 } from 'lucide-react';
 
 export default function BookingFlowPage() {
@@ -37,6 +40,7 @@ export default function BookingFlowPage() {
 
   const [roomType, setRoomType] = useState(null);
   const [extraServices, setExtraServices] = useState([]);
+  const [availableCoupons, setAvailableCoupons] = useState([]);
   const [loadingRoom, setLoadingRoom] = useState(true);
 
   // Form State
@@ -54,23 +58,50 @@ export default function BookingFlowPage() {
   // Selected Extras: { [extraId]: quantity }
   const [selectedExtras, setSelectedExtras] = useState({});
 
+  // Coupon / Discount State
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState('');
+  const [couponSuccess, setCouponSuccess] = useState('');
+
   // Price calculation from backend
   const [priceCalculation, setPriceCalculation] = useState(null);
   const [calculatingPrice, setCalculatingPrice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch Room Type & Extra Services
+  // Fetch Room Type, Extra Services & Available Coupons
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [roomRes, extrasRes] = await Promise.all([
+        const [roomRes, extrasRes, couponsRes] = await Promise.allSettled([
           serviceService.getRoomType(serviceId),
           serviceService.getExtraServices(),
+          serviceService.getActiveCoupons(),
         ]);
-        if (roomRes.data) setRoomType(roomRes.data);
-        if (extrasRes.data) setExtraServices(extrasRes.data);
+
+        if (roomRes.status === 'fulfilled' && roomRes.value?.data) {
+          const raw = roomRes.value.data;
+          setRoomType(raw?.room_type || raw);
+        } else {
+          toast.error('Gagal memuat detail tipe kamar.');
+        }
+
+        if (extrasRes.status === 'fulfilled' && extrasRes.value?.data) {
+          const rawExtras = Array.isArray(extrasRes.value.data)
+            ? extrasRes.value.data
+            : extrasRes.value.data?.data || [];
+          setExtraServices(rawExtras);
+        }
+
+        if (couponsRes.status === 'fulfilled' && couponsRes.value?.data) {
+          const rawCoupons = Array.isArray(couponsRes.value.data)
+            ? couponsRes.value.data
+            : couponsRes.value.data?.data || [];
+          setAvailableCoupons(rawCoupons);
+        }
       } catch (err) {
-        toast.error('Gagal memuat detail tipe kamar.');
+        toast.error('Gagal memuat detail reservasi.');
       } finally {
         setLoadingRoom(false);
       }
@@ -78,7 +109,7 @@ export default function BookingFlowPage() {
     fetchData();
   }, [serviceId]);
 
-  // Recalculate price when dates or extras change
+  // Recalculate price when dates, extras, or applied coupon change
   useEffect(() => {
     if (!roomType || !checkIn || !checkOut || checkIn >= checkOut) return;
 
@@ -94,10 +125,23 @@ export default function BookingFlowPage() {
           check_in_date: checkIn,
           check_out_date: checkOut,
           extras: extrasPayload,
+          coupon_code: appliedCoupon ? appliedCoupon.code : null,
         });
 
         if (res.data) {
           setPriceCalculation(res.data);
+          if (res.data.coupon) {
+            setAppliedCoupon((prev) => ({
+              ...prev,
+              ...res.data.coupon,
+              discount_amount: res.data.discount_amount,
+            }));
+          } else if (appliedCoupon && Number(res.data.discount_amount || 0) === 0) {
+            if (res.data.coupon_message) {
+              setCouponError(res.data.coupon_message);
+              setCouponSuccess('');
+            }
+          }
         }
       } catch (err) {
         console.error('Calculate price error:', err);
@@ -108,7 +152,7 @@ export default function BookingFlowPage() {
 
     const timer = setTimeout(calculate, 300);
     return () => clearTimeout(timer);
-  }, [roomType, checkIn, checkOut, selectedExtras]);
+  }, [roomType, checkIn, checkOut, selectedExtras, appliedCoupon?.code]);
 
   // Handle Extras Toggle / Quantity
   const handleExtraToggle = (extraId) => {
@@ -130,6 +174,46 @@ export default function BookingFlowPage() {
       const updated = Math.max(1, current + delta);
       return { ...prev, [extraId]: updated };
     });
+  };
+
+  // Handle Coupon Apply
+  const handleApplyCoupon = async (codeToApply) => {
+    const code = (codeToApply || couponCodeInput || '').trim().toUpperCase();
+    if (!code) {
+      setCouponError('Silakan masukkan kode promo / kupon.');
+      return;
+    }
+
+    setCouponLoading(true);
+    setCouponError('');
+    setCouponSuccess('');
+
+    try {
+      const currentSubtotal = priceCalculation?.subtotal || (Number(roomType?.base_price_per_night || 0));
+      const res = await serviceService.validateCoupon(code, currentSubtotal);
+
+      if (res.data) {
+        setAppliedCoupon(res.data);
+        setCouponCodeInput(res.data.code);
+        setCouponSuccess(`Kupon "${res.data.name}" aktif!`);
+        toast.success(`Kupon ${res.data.code} berhasil diterapkan!`);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || `Kode kupon "${code}" tidak valid atau tidak memenuhi syarat.`;
+      setCouponError(msg);
+      toast.error(msg);
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  // Handle Coupon Remove
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponError('');
+    setCouponSuccess('');
+    toast.info('Kupon diskon dihapus.');
   };
 
   // Submit Booking & Midtrans Checkout
@@ -169,6 +253,7 @@ export default function BookingFlowPage() {
         total_children: children,
         special_requests: specialRequests,
         extras: extrasPayload,
+        coupon_code: appliedCoupon ? appliedCoupon.code : null,
       };
 
       // 1. Create Booking
@@ -237,7 +322,17 @@ export default function BookingFlowPage() {
     );
   }
 
-  const nights = priceCalculation?.nights || 1;
+  // Safe pricing metrics
+  const basePricePerNight = Number(roomType?.base_price_per_night) || 0;
+  const nights = Number(priceCalculation?.nights) || Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24))) || 1;
+
+  const roomCost = Number(priceCalculation?.room_cost?.total_room_amount ?? (basePricePerNight * nights)) || 0;
+  const extrasTotal = Number(priceCalculation?.extras_total ?? 0) || 0;
+  const subtotal = Number(priceCalculation?.subtotal ?? (roomCost + extrasTotal)) || 0;
+  const discountAmount = Number(priceCalculation?.discount_amount ?? appliedCoupon?.discount_amount ?? 0) || 0;
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  const taxAndService = Number(priceCalculation?.tax_and_service ?? Math.round(taxableAmount * 0.10)) || 0;
+  const grandTotal = Number(priceCalculation?.grand_total ?? (taxableAmount + taxAndService)) || 0;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -468,7 +563,7 @@ export default function BookingFlowPage() {
                     rows={2}
                     value={specialRequests}
                     onChange={(e) => setSpecialRequests(e.target.value)}
-                    placeholder="Contoh: Permintaan lantai atas, ranjang bayi (baby cot), or early check-in jika memungkinkan."
+                    placeholder="Contoh: Permintaan lantai atas, ranjang bayi (baby cot), atau early check-in jika memungkinkan."
                     className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                   />
                 </div>
@@ -585,36 +680,146 @@ export default function BookingFlowPage() {
               </div>
             </div>
 
+            {/* Promo / Discount Coupon Section */}
+            <div className="pt-4 border-t border-slate-100 space-y-3">
+              <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                <TicketPercent className="w-4 h-4 text-amber-600" />
+                <span>Punya Kode Promo / Kupon Diskon?</span>
+              </label>
+
+              {!appliedCoupon ? (
+                <div className="space-y-2.5">
+                  <div className="flex space-x-2">
+                    <div className="relative flex-1">
+                      <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={couponCodeInput}
+                        onChange={(e) => {
+                          setCouponCodeInput(e.target.value.toUpperCase());
+                          if (couponError) setCouponError('');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleApplyCoupon();
+                          }
+                        }}
+                        placeholder="Contoh: ROYALVIP"
+                        className="w-full pl-8 pr-3 py-2 text-xs font-bold uppercase tracking-wider rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={couponLoading || !couponCodeInput.trim()}
+                      onClick={() => handleApplyCoupon()}
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center space-x-1"
+                    >
+                      {couponLoading ? (
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <span>Terapkan</span>
+                      )}
+                    </button>
+                  </div>
+
+                  {couponError && (
+                    <div className="text-[11px] text-rose-600 flex items-center space-x-1 font-semibold">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>{couponError}</span>
+                    </div>
+                  )}
+
+                  {/* Available coupon chips */}
+                  {availableCoupons.length > 0 && (
+                    <div className="pt-1">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">
+                        Kupon Tersedia (Klik untuk Pakai):
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {availableCoupons.map((cp) => (
+                          <button
+                            key={cp.id}
+                            type="button"
+                            onClick={() => handleApplyCoupon(cp.code)}
+                            className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/70 rounded-lg text-[10px] font-bold transition flex items-center space-x-1"
+                          >
+                            <Sparkles className="w-2.5 h-2.5 text-amber-600" />
+                            <span>{cp.code}</span>
+                            <span className="text-amber-600 font-normal">
+                              ({cp.type === 'percentage' ? `${Math.round(cp.value)}%` : formatRupiah(cp.value)})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Applied Coupon Badge */
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+                      <Check className="w-4 h-4 stroke-[3]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-xs font-black text-emerald-900 tracking-wide">
+                          {appliedCoupon.code}
+                        </span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                          Aktif
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-emerald-700 font-medium">
+                        {appliedCoupon.name || 'Diskon kupon promo'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                    title="Hapus kupon"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Cost Details */}
             <div className="pt-4 border-t border-slate-100 space-y-2.5 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Biaya Kamar ({nights} malam):</span>
-                <span className="font-bold text-slate-900">
-                  {formatRupiah(priceCalculation?.room_cost?.total_room_amount || roomType.base_price_per_night * nights)}
-                </span>
+                <span className="font-bold text-slate-900">{formatRupiah(roomCost)}</span>
               </div>
 
-              {priceCalculation?.extras_total > 0 && (
+              {extrasTotal > 0 && (
                 <div className="flex justify-between text-slate-600">
                   <span>Layanan Tambahan:</span>
-                  <span className="font-bold text-slate-900">
-                    {formatRupiah(priceCalculation.extras_total)}
-                  </span>
+                  <span className="font-bold text-slate-900">{formatRupiah(extrasTotal)}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal:</span>
-                <span className="font-bold text-slate-900">
-                  {formatRupiah(priceCalculation?.subtotal || roomType.base_price_per_night * nights)}
-                </span>
+                <span className="font-bold text-slate-900">{formatRupiah(subtotal)}</span>
               </div>
+
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200/80">
+                  <span className="flex items-center space-x-1">
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>Diskon Promo ({appliedCoupon?.code || priceCalculation?.discount_code}):</span>
+                  </span>
+                  <span>-{formatRupiah(discountAmount)}</span>
+                </div>
+              )}
 
               <div className="flex justify-between text-slate-600">
                 <span>Pajak & Layanan Hotel (10%):</span>
-                <span className="font-bold text-slate-900">
-                  {formatRupiah(priceCalculation?.tax_and_service || (roomType.base_price_per_night * nights * 0.1))}
-                </span>
+                <span className="font-bold text-slate-900">{formatRupiah(taxAndService)}</span>
               </div>
 
               <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
@@ -624,9 +829,16 @@ export default function BookingFlowPage() {
                   </span>
                   <span className="text-[10px] text-slate-400">Termasuk pajak 10%</span>
                 </div>
-                <span className="text-2xl font-black text-amber-700">
-                  {formatRupiah(priceCalculation?.grand_total || (roomType.base_price_per_night * nights * 1.1))}
-                </span>
+                <div className="text-right">
+                  {discountAmount > 0 && (
+                    <span className="text-xs text-slate-400 line-through block font-medium">
+                      {formatRupiah(subtotal + Math.round(subtotal * 0.1))}
+                    </span>
+                  )}
+                  <span className="text-2xl font-black text-amber-700">
+                    {formatRupiah(grandTotal)}
+                  </span>
+                </div>
               </div>
             </div>
 

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AdminDashboardController;
 use App\Http\Controllers\Api\V1\AmenityController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\CouponController;
 use App\Http\Controllers\Api\V1\HotelBookingController;
 use App\Http\Controllers\Api\V1\HotelController;
 use App\Http\Controllers\Api\V1\MidtransWebhookController;
@@ -25,6 +26,8 @@ Route::prefix('v1')->group(function () {
     Route::get('/room-types/{id}', [RoomTypeController::class, 'show']);
     Route::get('/room-types/{id}/reviews', [ReviewController::class, 'index']);
     Route::post('/bookings/calculate-price', [HotelBookingController::class, 'calculatePrice']);
+    Route::get('/coupons/active', [CouponController::class, 'activeCoupons']);
+    Route::post('/coupons/validate', [CouponController::class, 'validateCoupon']);
 
     // Backward compatibility aliases for existing frontend services
     Route::get('/services', [RoomTypeController::class, 'index']);
@@ -38,6 +41,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/user', [AuthController::class, 'user']);
         Route::put('/user/profile', [AuthController::class, 'updateProfile']);
+        Route::get('/user/cancellation-key', [AuthController::class, 'getCancellationKey']);
+        Route::post('/user/generate-cancellation-key', [AuthController::class, 'generateCancellationKey']);
 
         // Customer Hotel Booking
         Route::post('/bookings', [HotelBookingController::class, 'store']);
@@ -93,6 +98,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/bookings/{id}/available-rooms', [HotelBookingController::class, 'availableRoomsForBooking']);
             Route::post('/bookings/{id}/check-in', [HotelBookingController::class, 'checkIn']);
             Route::post('/bookings/{id}/check-out', [HotelBookingController::class, 'checkOut']);
+            Route::post('/bookings/{id}/cancel', [HotelBookingController::class, 'adminCancel']);
 
             // Customers & Payments
             Route::get('/customers', [AdminDashboardController::class, 'customers']);

@@ -18,6 +18,7 @@ class User extends Authenticatable
         'phone',
         'password',
         'role',
+        'cancellation_key',
     ];
 
     protected $hidden = [

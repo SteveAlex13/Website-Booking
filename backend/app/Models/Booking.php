@@ -36,6 +36,9 @@ class Booking extends Model
         'total_room_amount',
         'total_extras_amount',
         'tax_and_service_amount',
+        'discount_coupon_id',
+        'discount_code',
+        'discount_amount',
         'total_amount',
         'special_requests',
         'status',
@@ -59,6 +62,7 @@ class Booking extends Model
             'total_room_amount' => 'decimal:2',
             'total_extras_amount' => 'decimal:2',
             'tax_and_service_amount' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'expires_at' => 'datetime',
             'confirmed_at' => 'datetime',
@@ -76,6 +80,11 @@ class Booking extends Model
     public function roomType(): BelongsTo
     {
         return $this->belongsTo(RoomType::class);
+    }
+
+    public function discountCoupon(): BelongsTo
+    {
+        return $this->belongsTo(DiscountCoupon::class, 'discount_coupon_id');
     }
 
     public function assignedRoom(): BelongsTo

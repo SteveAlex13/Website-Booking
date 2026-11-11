@@ -66,6 +66,16 @@ class MidtransService
             ];
         }
 
+        // Add discount deduction if present
+        if ($booking->discount_amount > 0) {
+            $itemDetails[] = [
+                'id' => 'DISCOUNT',
+                'price' => -1 * (int) round($booking->discount_amount),
+                'quantity' => 1,
+                'name' => 'Diskon Promo (' . ($booking->discount_code ?? 'PROMO') . ')',
+            ];
+        }
+
         $params = [
             'transaction_details' => [
                 'order_id' => $orderId,

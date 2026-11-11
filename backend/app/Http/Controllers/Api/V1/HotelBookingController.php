@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
+use App\Models\DiscountCoupon;
 use App\Models\ExtraService;
 use App\Models\RoomType;
+use App\Models\User;
 use App\Services\HotelBookingService;
 use App\Services\RoomAvailabilityService;
 use Carbon\Carbon;
@@ -29,6 +31,7 @@ class HotelBookingController extends Controller
             'room_type_id' => 'required|exists:room_types,id',
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
+            'coupon_code' => 'nullable|string|max:50',
             'extras' => 'nullable|array',
             'extras.*.id' => 'exists:extra_services,id',
             'extras.*.quantity' => 'nullable|integer|min:1',
@@ -39,7 +42,7 @@ class HotelBookingController extends Controller
         $checkOut = Carbon::parse($validated['check_out_date'])->startOfDay();
 
         $costDetails = $roomType->calculateTotalRoomCost($checkIn, $checkOut);
-        $totalRoomAmount = $costDetails['total_amount'];
+        $totalRoomAmount = (float) $costDetails['total_amount'];
         $nights = $costDetails['nights'];
 
         $totalExtras = 0;
@@ -68,8 +71,40 @@ class HotelBookingController extends Controller
         }
 
         $subtotal = $totalRoomAmount + $totalExtras;
-        $tax = round($subtotal * 0.10, 2);
-        $grandTotal = $subtotal + $tax;
+
+        // Calculate discount if coupon code provided
+        $discountAmount = 0.0;
+        $discountCouponData = null;
+        $couponMessage = null;
+
+        if (! empty($validated['coupon_code'])) {
+            $code = strtoupper(trim($validated['coupon_code']));
+            $coupon = DiscountCoupon::where('code', $code)->first();
+
+            if ($coupon) {
+                $check = $coupon->checkValidity($subtotal);
+                if ($check['valid']) {
+                    $discountAmount = $coupon->calculateDiscount($subtotal);
+                    $discountCouponData = [
+                        'id' => $coupon->id,
+                        'code' => $coupon->code,
+                        'name' => $coupon->name,
+                        'type' => $coupon->type,
+                        'value' => (float) $coupon->value,
+                        'discount_amount' => $discountAmount,
+                    ];
+                    $couponMessage = "Kupon {$coupon->name} berhasil digunakan!";
+                } else {
+                    $couponMessage = $check['message'];
+                }
+            } else {
+                $couponMessage = "Kode promo '{$code}' tidak valid.";
+            }
+        }
+
+        $taxableSubtotal = max(0.0, $subtotal - $discountAmount);
+        $tax = round($taxableSubtotal * 0.10, 2);
+        $grandTotal = round($taxableSubtotal + $tax, 2);
 
         $availability = $this->availabilityService->checkRoomTypeAvailability($roomType, $checkIn, $checkOut);
 
@@ -83,6 +118,11 @@ class HotelBookingController extends Controller
                 'extras_total' => $totalExtras,
                 'extras_breakdown' => $extrasBreakdown,
                 'subtotal' => $subtotal,
+                'discount_amount' => $discountAmount,
+                'discount_code' => $discountCouponData['code'] ?? null,
+                'coupon' => $discountCouponData,
+                'coupon_message' => $couponMessage,
+                'taxable_amount' => $taxableSubtotal,
                 'tax_and_service' => $tax,
                 'grand_total' => $grandTotal,
                 'is_available' => $availability['is_available'],
@@ -100,6 +140,7 @@ class HotelBookingController extends Controller
             'room_type_id' => 'required|exists:room_types,id',
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
+            'coupon_code' => 'nullable|string|max:50',
             'customer_name' => 'nullable|string|max:100',
             'customer_email' => 'nullable|email|max:150',
             'customer_phone' => 'nullable|string|max:30',
@@ -117,7 +158,7 @@ class HotelBookingController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Reservasi kamar berhasil dibuat. Silakan selesaikan pembayaran.',
-                'data' => $booking->load(['roomType', 'extraItems']),
+                'data' => $booking->load(['roomType', 'extraItems', 'discountCoupon']),
             ], 201);
         } catch (Exception $e) {
             return response()->json([
@@ -296,6 +337,60 @@ class HotelBookingController extends Controller
                 'success' => true,
                 'message' => 'Tamu berhasil check-out. Kamar siap dibersihkan.',
                 'data' => $updated->load(['roomType', 'assignedRoom']),
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Admin: Cancel booking with Super Admin Cancellation Key verification.
+     */
+    public function adminCancel(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'cancellation_key' => 'required|string',
+            'reason' => 'required|string|max:500',
+        ]);
+
+        $inputKey = trim($validated['cancellation_key']);
+
+        // Verify Key against Super Admin's active cancellation_key
+        $superAdmin = User::where('role', 'super_admin')
+            ->whereNotNull('cancellation_key')
+            ->where('cancellation_key', $inputKey)
+            ->first();
+
+        if (! $superAdmin) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Key Konfirmasi Pembatalan salah atau tidak valid! Hubungi Super Admin / General Manager untuk mendapatkan Key Otorisasi.',
+            ], 403);
+        }
+
+        $booking = Booking::findOrFail($id);
+
+        if (in_array($booking->status, [Booking::STATUS_CANCELLED, Booking::STATUS_CHECKED_OUT])) {
+            return response()->json([
+                'success' => false,
+                'message' => "Reservasi dengan status {$booking->status} tidak dapat dibatalkan lagi.",
+            ], 422);
+        }
+
+        try {
+            $updated = $this->bookingService->cancelBooking(
+                $booking,
+                $request->user(),
+                $validated['reason'] . " (Diotorisasi dengan Key Super Admin [{$superAdmin->name}])"
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Reservasi {$booking->booking_code} berhasil dibatalkan.",
+                'data' => $updated,
             ]);
         } catch (Exception $e) {
             return response()->json([
