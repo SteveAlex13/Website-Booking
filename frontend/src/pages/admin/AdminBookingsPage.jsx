@@ -37,6 +37,7 @@ export default function AdminBookingsPage() {
   const [checkInModalOpen, setCheckInModalOpen] = useState(false);
   const [selectedBookingForCheckIn, setSelectedBookingForCheckIn] = useState(null);
   const [availableRooms, setAvailableRooms] = useState([]);
+  const [allRoomsOfType, setAllRoomsOfType] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [checkingIn, setCheckingIn] = useState(false);
 
@@ -97,13 +98,18 @@ export default function AdminBookingsPage() {
   const openCheckInModal = async (booking) => {
     setSelectedBookingForCheckIn(booking);
     setSelectedRoomId('');
+    setAvailableRooms([]);
+    setAllRoomsOfType([]);
     setCheckInModalOpen(true);
     try {
       const res = await adminService.getAvailableRoomsForBooking(booking.id);
-      const rooms = res.data?.available_rooms || [];
-      setAvailableRooms(rooms);
-      if (rooms.length > 0) {
-        setSelectedRoomId(rooms[0].id);
+      const payload = res.data || res;
+      const readyRooms = Array.isArray(payload) ? payload : (payload.rooms || payload.available_rooms || []);
+      const allRooms = Array.isArray(payload) ? payload : (payload.all_rooms || readyRooms);
+      setAvailableRooms(readyRooms);
+      setAllRoomsOfType(allRooms);
+      if (readyRooms.length > 0) {
+        setSelectedRoomId(readyRooms[0].id);
       }
     } catch (err) {
       toast.error('Gagal memuat kamar yang tersedia.');
@@ -337,9 +343,9 @@ export default function AdminBookingsPage() {
                       </td>
 
                       <td className="px-6 py-4">
-                        {b.room ? (
+                        {(b.assigned_room || b.room) ? (
                           <span className="font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
-                            #{b.room.room_number} (Lt. {b.room.floor})
+                            #{(b.assigned_room || b.room).room_number} (Lt. {(b.assigned_room || b.room).floor})
                           </span>
                         ) : (
                           <span className="text-[11px] text-slate-400 italic">Belum dialokasikan</span>
@@ -348,6 +354,17 @@ export default function AdminBookingsPage() {
 
                       <td className="px-6 py-4">
                         <span className="font-black text-slate-900">{formatRupiah(b.total_amount)}</span>
+                        <div className="mt-1">
+                          {b.payment_method === 'cash' ? (
+                            <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              💵 Tunai di Hotel
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                              💳 Midtrans
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-6 py-4">
@@ -476,30 +493,68 @@ export default function AdminBookingsPage() {
                   {formatDate(selectedBookingForCheckIn.check_in_date)} — {formatDate(selectedBookingForCheckIn.check_out_date)}
                 </span>
               </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200">
+                <span className="text-slate-500">Metode & Tagihan:</span>
+                <span className="font-bold text-slate-900">
+                  {selectedBookingForCheckIn.payment_method === 'cash' ? '💵 Bayar di Hotel' : '💳 Midtrans Online'} — {formatRupiah(selectedBookingForCheckIn.total_amount)}
+                </span>
+              </div>
             </div>
+
+            {selectedBookingForCheckIn.payment_method === 'cash' && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start space-x-2">
+                <span className="text-base leading-none">⚠️</span>
+                <div>
+                  <p className="font-bold">Tagihan Tunai Front Desk:</p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    Pastikan menerima pembayaran tunai sebesar <strong>{formatRupiah(selectedBookingForCheckIn.total_amount)}</strong> dari tamu sebelum menyerahkan kunci kamar. Status pembayaran tunai akan otomatis ditandai <strong>LUNAS</strong> setelah tombol konfirmasi check-in ditekan.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleConfirmCheckIn} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                  Pilih Unit Kamar Fisik yang Siap (Ready Clean) *
+                <label className="block text-xs font-bold text-slate-800 mb-1.5 flex justify-between">
+                  <span>Pilih Unit Kamar Fisik (Status: Ready Clean) *</span>
+                  <span className="text-[11px] text-emerald-600 font-semibold">
+                    {availableRooms.length} kamar ready
+                  </span>
                 </label>
+
                 {availableRooms.length === 0 ? (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
-                    Tidak ada unit kamar fisik yang berstatus Tersedia (Available) untuk tipe ini saat ini. Silakan periksa modul Inventaris Kamar.
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+                    <p className="font-bold">Tidak ada unit kamar yang berstatus Ready (Tersedia).</p>
+                    <p className="text-[11px] text-rose-700">
+                      Semua unit kamar tipe ini sedang berstatus <strong>Terisi (Occupied)</strong> atau <strong>Sedang Dibersihkan (Cleaning)</strong>. Silakan periksa dan perbarui status kebersihan kamar di menu Inventaris Kamar terlebih dahulu.
+                    </p>
                   </div>
                 ) : (
-                  <select
-                    value={selectedRoomId}
-                    onChange={(e) => setSelectedRoomId(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    required
-                  >
-                    {availableRooms.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        Unit Kamar #{r.room_number} — Lantai {r.floor} {r.notes ? `(${r.notes})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      value={selectedRoomId}
+                      onChange={(e) => setSelectedRoomId(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      required
+                    >
+                      {availableRooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          Unit Kamar #{r.room_number} — Lantai {r.floor} (Siap Pakai / Ready Clean)
+                        </option>
+                      ))}
+                    </select>
+
+                    <p className="text-[11px] text-slate-500 mt-1.5 flex items-center space-x-1">
+                      <span>ℹ️</span>
+                      <span>Unit kamar yang dipilih akan otomatis berubah statusnya menjadi <strong>Terisi (Occupied)</strong>.</span>
+                    </p>
+                  </>
+                )}
+
+                {allRoomsOfType.length > availableRooms.length && (
+                  <div className="mt-2 p-2.5 bg-slate-100 rounded-xl text-[11px] text-slate-600">
+                    Total unit tipe ini: {allRoomsOfType.length} kamar ({allRoomsOfType.length - availableRooms.length} kamar sedang terisi / dalam pembersihan).
+                  </div>
                 )}
               </div>
 
@@ -532,7 +587,7 @@ export default function AdminBookingsPage() {
         loading={checkingOut}
         type="warning"
         title="Konfirmasi Check-Out Tamu"
-        message={`Tamu ${selectedBookingForCheckOut?.customer_name} akan check-out dari Kamar #${selectedBookingForCheckOut?.room?.room_number || ''}. Status unit kamar akan otomatis dialihkan ke "Pembersihan (Cleaning)" untuk tim housekeeping.`}
+        message={`Tamu ${selectedBookingForCheckOut?.customer_name} akan check-out dari Kamar #${(selectedBookingForCheckOut?.assigned_room || selectedBookingForCheckOut?.room)?.room_number || ''}. Status unit fisik kamar akan langsung otomatis dialihkan menjadi "Pembersihan (Cleaning)" agar staf housekeeping dapat segera membersihkannya.`}
         confirmText="Check-Out Tamu Sekarang"
         cancelText="Batal"
       />

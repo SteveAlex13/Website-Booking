@@ -79,5 +79,144 @@ class CouponController extends Controller
             ],
         ]);
     }
+
+    /**
+     * Admin: List all coupons.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $query = DiscountCoupon::query();
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('code', 'like', "%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('status')) {
+            if ($request->status === 'active') {
+                $query->where('is_active', true);
+            } elseif ($request->status === 'inactive') {
+                $query->where('is_active', false);
+            }
+        }
+
+        $coupons = $query->orderBy('id', 'desc')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $coupons,
+        ]);
+    }
+
+    /**
+     * Admin: Create a new discount coupon.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => 'required|string|max:50|unique:discount_coupons,code',
+            'name' => 'required|string|max:150',
+            'type' => 'required|in:percentage,fixed',
+            'value' => 'required|numeric|min:0.01',
+            'min_spend' => 'nullable|numeric|min:0',
+            'max_discount' => 'nullable|numeric|min:0',
+            'usage_limit' => 'nullable|integer|min:1',
+            'expires_at' => 'nullable|date',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $validated['code'] = strtoupper(trim($validated['code']));
+        $validated['min_spend'] = $validated['min_spend'] ?? 0;
+        $validated['is_active'] = $validated['is_active'] ?? true;
+
+        if ($validated['type'] === 'percentage' && $validated['value'] > 100) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nilai diskon persentase tidak boleh lebih dari 100%.',
+            ], 422);
+        }
+
+        $coupon = DiscountCoupon::create($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Kupon promo '{$coupon->code}' berhasil ditambahkan.",
+            'data' => $coupon,
+        ], 201);
+    }
+
+    /**
+     * Admin: Update coupon details.
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $coupon = DiscountCoupon::findOrFail($id);
+
+        $validated = $request->validate([
+            'code' => "required|string|max:50|unique:discount_coupons,code,{$id}",
+            'name' => 'required|string|max:150',
+            'type' => 'required|in:percentage,fixed',
+            'value' => 'required|numeric|min:0.01',
+            'min_spend' => 'nullable|numeric|min:0',
+            'max_discount' => 'nullable|numeric|min:0',
+            'usage_limit' => 'nullable|integer|min:1',
+            'expires_at' => 'nullable|date',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $validated['code'] = strtoupper(trim($validated['code']));
+        $validated['min_spend'] = $validated['min_spend'] ?? 0;
+
+        if ($validated['type'] === 'percentage' && $validated['value'] > 100) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nilai diskon persentase tidak boleh lebih dari 100%.',
+            ], 422);
+        }
+
+        $coupon->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Kupon promo '{$coupon->code}' berhasil diperbarui.",
+            'data' => $coupon,
+        ]);
+    }
+
+    /**
+     * Admin: Toggle coupon active status.
+     */
+    public function toggleActive(int $id): JsonResponse
+    {
+        $coupon = DiscountCoupon::findOrFail($id);
+        $coupon->is_active = ! $coupon->is_active;
+        $coupon->save();
+
+        $statusStr = $coupon->is_active ? 'diaktifkan' : 'dinonaktifkan';
+
+        return response()->json([
+            'success' => true,
+            'message' => "Kupon '{$coupon->code}' berhasil {$statusStr}.",
+            'data' => $coupon,
+        ]);
+    }
+
+    /**
+     * Admin: Delete coupon.
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $coupon = DiscountCoupon::findOrFail($id);
+        $code = $coupon->code;
+        $coupon->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Kupon promo '{$code}' berhasil dihapus.",
+        ]);
+    }
 }
 

@@ -21,7 +21,7 @@ export default function LoginPage() {
 
     try {
       const res = await login(email, password);
-      const user = res.data.user;
+      const user = res.data?.user || res.user;
 
       if (from) {
         navigate(from, { replace: true });
@@ -124,14 +124,28 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => fillQuickCredentials('customer@booking.com', 'password123')}
-              className="text-xs px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+              className="text-xs px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition"
             >
-              Customer
+              Customer (Budi)
+            </button>
+            <button
+              type="button"
+              onClick={() => fillQuickCredentials('steve@gmail.com', 'password123')}
+              className="text-xs px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold rounded-lg transition"
+            >
+              Customer (Steve)
+            </button>
+            <button
+              type="button"
+              onClick={() => fillQuickCredentials('staff@booking.com', 'password123')}
+              className="text-xs px-2.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 font-semibold rounded-lg transition"
+            >
+              Front Desk Staff
             </button>
             <button
               type="button"
               onClick={() => fillQuickCredentials('admin@booking.com', 'password123')}
-              className="text-xs px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition"
+              className="text-xs px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 font-semibold rounded-lg transition"
             >
               Super Admin
             </button>

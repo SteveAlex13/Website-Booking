@@ -19,6 +19,7 @@ class Payment extends Model
     public const STATUS_CANCELLED = 'CANCELLED';
     public const STATUS_REFUNDED = 'REFUNDED';
     public const STATUS_PARTIALLY_REFUNDED = 'PARTIALLY_REFUNDED';
+    public const STATUS_PAID_NO_SLOT = 'PAID_NO_SLOT';
 
     protected $fillable = [
         'booking_id',

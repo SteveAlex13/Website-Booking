@@ -26,6 +26,7 @@ import {
   Tag,
   TicketPercent,
   X,
+  Banknote,
 } from 'lucide-react';
 
 export default function BookingFlowPage() {
@@ -65,10 +66,14 @@ export default function BookingFlowPage() {
   const [couponError, setCouponError] = useState('');
   const [couponSuccess, setCouponSuccess] = useState('');
 
+  // Payment Method: 'midtrans' | 'cash'
+  const [paymentMethod, setPaymentMethod] = useState('midtrans');
+
   // Price calculation from backend
   const [priceCalculation, setPriceCalculation] = useState(null);
   const [calculatingPrice, setCalculatingPrice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isOverbookedModalOpen, setIsOverbookedModalOpen] = useState(false);
 
   // Fetch Room Type, Extra Services & Available Coupons
   useEffect(() => {
@@ -254,15 +259,28 @@ export default function BookingFlowPage() {
         special_requests: specialRequests,
         extras: extrasPayload,
         coupon_code: appliedCoupon ? appliedCoupon.code : null,
+        payment_method: paymentMethod,
       };
 
       // 1. Create Booking
       const bookingRes = await bookingService.createBooking(bookingPayload);
       const newBooking = bookingRes.data;
 
+      // 2. If Cash Payment: skip Midtrans, redirect directly to confirmation receipt
+      if (paymentMethod === 'cash') {
+        const cashPaymentId =
+          newBooking.latest_payment?.id ||
+          newBooking.payments?.[0]?.id ||
+          newBooking.id;
+
+        toast.success(`Reservasi ${newBooking.booking_code} berhasil! Silakan bayar tunai saat Check-In.`);
+        navigate(`/payment-result/${cashPaymentId}`);
+        return;
+      }
+
       toast.success(`Reservasi ${newBooking.booking_code} berhasil dibuat! Membuka Midtrans...`);
 
-      // 2. Trigger Midtrans Snap Checkout
+      // 3. Trigger Midtrans Snap Checkout
       const checkoutRes = await paymentService.checkout(newBooking.id);
       const { snap_token, client_key, payment_id } = checkoutRes.data;
 
@@ -295,7 +313,23 @@ export default function BookingFlowPage() {
       });
     } catch (err) {
       console.error(err);
-      toast.error(err.response?.data?.message || 'Terjadi kesalahan saat memproses booking.');
+      const errData = err.response?.data;
+      const msg = errData?.message || err.message || '';
+      const isOverbooked =
+        err.response?.status === 409 ||
+        errData?.error_code === 'ROOM_ALREADY_BOOKED' ||
+        msg.includes('sudah dibooking orang lain') ||
+        msg.includes('sudah tidak tersedia') ||
+        msg.includes('penuh');
+
+      if (isOverbooked) {
+        setIsOverbookedModalOpen(true);
+        if (roomType?.id) {
+          calculatePrice(roomType.id, checkIn, checkOut, appliedCoupon?.code);
+        }
+      } else {
+        toast.error(msg || 'Terjadi kesalahan saat memproses booking.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -350,17 +384,30 @@ export default function BookingFlowPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left 2 Cols: Booking Form & Add-ons */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Room Header Card */}
+          {/* Room Header Card (Section 11: blur & overlay label saat kamar tidak tersedia) */}
           <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row gap-6 items-center">
-            <img
-              src={roomType.image_url}
-              alt={roomType.name}
-              className="w-full sm:w-44 h-36 rounded-2xl object-cover bg-slate-900 shadow-sm"
-              onError={(e) => {
-                e.target.src =
-                  'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
-              }}
-            />
+            <div className="relative w-full sm:w-44 h-36 rounded-2xl overflow-hidden bg-slate-900 shadow-sm shrink-0">
+              <img
+                src={roomType.image_url}
+                alt={roomType.name}
+                className={`w-full h-full object-cover transition duration-300 ${
+                  priceCalculation && !priceCalculation.is_available
+                    ? 'filter blur-[2px] opacity-75'
+                    : ''
+                }`}
+                onError={(e) => {
+                  e.target.src =
+                    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
+                }}
+              />
+              {priceCalculation && !priceCalculation.is_available && (
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-2 text-center">
+                  <span className="px-3 py-1 bg-rose-600/95 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg border border-rose-400/40">
+                    Tidak Tersedia
+                  </span>
+                </div>
+              )}
+            </div>
             <div className="flex-1 space-y-2 text-center sm:text-left">
               <div className="flex items-center justify-center sm:justify-start space-x-1.5 text-amber-500 text-xs font-bold">
                 <Star className="w-4 h-4 fill-amber-400" />
@@ -489,9 +536,9 @@ export default function BookingFlowPage() {
                     <>
                       <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
                       <div>
-                        <span className="font-bold">Kamar Penuh pada Tanggal Ini</span>
+                        <span className="font-bold">Mohon maaf kamar sudah dibooking orang lain dan sudah tidak tersedia</span>
                         <span className="block text-[11px] text-rose-700">
-                          Silakan pilih rentang tanggal lain untuk melanjutkan reservasi.
+                          Kamar tipe ini sudah terisi penuh pada rentang tanggal yang dipilih. Silakan ubah tanggal atau pilih tipe kamar lain.
                         </span>
                       </div>
                     </>
@@ -842,29 +889,137 @@ export default function BookingFlowPage() {
               </div>
             </div>
 
-            {/* Midtrans Snap Guarantee */}
-            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200/80 text-[11px] text-amber-900 space-y-1">
-              <div className="flex items-center space-x-1.5 font-bold">
-                <CreditCard className="w-3.5 h-3.5 text-amber-700" />
-                <span>Midtrans Snap Instant QRIS</span>
+            {/* Payment Method Selector (Midtrans Online vs Cash at Hotel) */}
+            <div className="pt-4 border-t border-slate-100 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-900">Pilih Metode Pembayaran *</span>
+                <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">
+                  2 Opsi
+                </span>
               </div>
-              <p className="text-[10px] text-amber-800 leading-relaxed">
-                Kamar langsung dikunci 15 menit. Anda dapat membayar langsung dengan scan QRIS Gopay, BCA, Mandiri, ShopeePay atau Virtual Account.
-              </p>
+
+              <div className="grid grid-cols-1 gap-2.5">
+                {/* Option 1: Midtrans Snap Online */}
+                <div
+                  onClick={() => setPaymentMethod('midtrans')}
+                  className={`p-3.5 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
+                    paymentMethod === 'midtrans'
+                      ? 'border-amber-500 bg-amber-50/70 ring-1 ring-amber-500/20 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0">
+                      <CreditCard className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                        <span>Bayar Online (Midtrans)</span>
+                        <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-1.5 py-0.2 rounded">
+                          INSTAN
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Scan QRIS, BCA/Mandiri VA, GoPay, ShopeePay
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="radio"
+                    name="payment_method_radio"
+                    checked={paymentMethod === 'midtrans'}
+                    onChange={() => setPaymentMethod('midtrans')}
+                    className="w-4 h-4 text-amber-600 focus:ring-amber-500 border-slate-300 cursor-pointer"
+                  />
+                </div>
+
+                {/* Option 2: Cash on Arrival */}
+                <div
+                  onClick={() => setPaymentMethod('cash')}
+                  className={`p-3.5 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
+                    paymentMethod === 'cash'
+                      ? 'border-emerald-500 bg-emerald-50/70 ring-1 ring-emerald-500/20 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+                      <Banknote className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                        <span>Bayar Tunai di Hotel (Cash)</span>
+                        <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.2 rounded">
+                          FRONT DESK
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Bayar tunai di meja resepsionis saat Check-In
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="radio"
+                    name="payment_method_radio"
+                    checked={paymentMethod === 'cash'}
+                    onChange={() => setPaymentMethod('cash')}
+                    className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer"
+                  />
+                </div>
+              </div>
             </div>
+
+            {/* Guarantee / Payment Info Box */}
+            {paymentMethod === 'midtrans' ? (
+              <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200/80 text-[11px] text-amber-900 space-y-1">
+                <div className="flex items-center space-x-1.5 font-bold">
+                  <CreditCard className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Midtrans Snap Instant Payment</span>
+                </div>
+                <p className="text-[10px] text-amber-800 leading-relaxed">
+                  Kamar langsung dikunci 15 menit. Anda dapat membayar langsung dengan scan QRIS Gopay, BCA, Mandiri, ShopeePay atau Virtual Account.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-[11px] text-emerald-900 space-y-1">
+                <div className="flex items-center space-x-1.5 font-bold">
+                  <Banknote className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Bayar Tunai saat Check-In (Cash on Arrival)</span>
+                </div>
+                <p className="text-[10px] text-emerald-800 leading-relaxed">
+                  Reservasi Anda akan langsung dikonfirmasi. Anda cukup menunjukkan Kode Booking dan membayar tunai di meja Front Desk saat tiba di resort.
+                </p>
+              </div>
+            )}
 
             {/* Checkout Action Button */}
             <button
               type="submit"
               form="hotel-booking-form"
               disabled={submitting || (priceCalculation && !priceCalculation.is_available)}
-              className="w-full py-4 px-6 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-black rounded-2xl shadow-lg shadow-amber-600/30 transition transform hover:-translate-y-0.5 text-xs flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`w-full py-4 px-6 text-white font-black rounded-2xl shadow-lg transition transform hover:-translate-y-0.5 text-xs flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                paymentMethod === 'cash'
+                  ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-700 hover:from-emerald-700 hover:to-teal-800 shadow-emerald-600/30'
+                  : 'bg-gradient-to-r from-amber-600 via-amber-500 to-amber-700 hover:from-amber-700 hover:to-amber-800 shadow-amber-600/30'
+              }`}
             >
               {submitting ? (
                 <span className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
+              ) : (priceCalculation && !priceCalculation.is_available) ? (
+                <>
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Kamar Penuh (Tidak Tersedia)</span>
+                </>
+              ) : paymentMethod === 'cash' ? (
+                <>
+                  <Banknote className="w-4 h-4" />
+                  <span>Konfirmasi Reservasi & Bayar di Hotel</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
               ) : (
                 <>
-                  <span>Bayar Sekarang via QRIS</span>
+                  <CreditCard className="w-4 h-4" />
+                  <span>Bayar Sekarang via Midtrans</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -872,6 +1027,58 @@ export default function BookingFlowPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal Notifikasi Jika Kamar Sudah Dibooking Orang Lain (Double-Booking Conflict) */}
+      {isOverbookedModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-rose-100 text-center space-y-5 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 mx-auto shadow-inner">
+              <AlertCircle className="w-10 h-10" />
+            </div>
+
+            <div>
+              <h3 className="text-xl font-black text-slate-900">
+                Kamar Sudah Tidak Tersedia
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 mt-2 font-medium leading-relaxed">
+                Mohon maaf kamar sudah dibooking orang lain dan sudah tidak tersedia pada rentang tanggal yang Anda pilih.
+              </p>
+
+              <div className="mt-3 p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-left text-xs text-amber-900 space-y-1">
+                <p className="font-bold flex items-center space-x-1.5">
+                  <span>💡</span>
+                  <span>Informasi Ketersediaan:</span>
+                </p>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Tamu lain baru saja menyelesaikan pembayaran beberapa detik lebih awal untuk sisa kuota unit kamar ini. Anda dapat memilih tipe kamar mewah lainnya atau mengatur ulang tanggal menginap.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={() => navigate('/services')}
+                className="w-full py-3.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl shadow-md transition text-xs flex items-center justify-center space-x-1.5"
+              >
+                <span>Lihat Kamar & Suite Lainnya</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOverbookedModalOpen(false);
+                  const el = document.getElementById('checkInInput');
+                  if (el) el.focus();
+                }}
+                className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs"
+              >
+                Ubah Tanggal Menginap
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

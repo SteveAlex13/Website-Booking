@@ -43,8 +43,10 @@ export default function ServicesPage() {
     setLoading(true);
     try {
       const params = {
-        check_in_date: checkIn,
-        check_out_date: checkOut,
+        // The public room-types endpoint expects these names so availability
+        // is calculated for the dates selected by the customer.
+        check_in: checkIn,
+        check_out: checkOut,
         adults: adults,
         children: children,
       };
@@ -212,26 +214,49 @@ export default function ServicesPage() {
       ) : (
         <div className="space-y-6">
           {safeRoomTypes.map((room) => {
-            const isAvailable = room.available_count === undefined || room.available_count > 0;
+            const availableSlots = room.available_slots !== undefined 
+              ? room.available_slots 
+              : (room.available_count !== undefined 
+                ? room.available_count 
+                : (room.available_rooms_count !== undefined 
+                  ? room.available_rooms_count 
+                  : (room.is_available === false ? 0 : 1)));
+            const isAvailable = availableSlots > 0 && room.is_available !== false;
             const pricePerNight = Number(room.base_price_per_night) || 0;
             const estimatedTotal = pricePerNight * nights;
 
             return (
               <div
                 key={room.id}
-                className="bg-white rounded-3xl border border-slate-200/90 overflow-hidden shadow-sm hover:shadow-lg transition flex flex-col lg:flex-row group"
+                className={`room-card bg-white rounded-3xl border border-slate-200/90 overflow-hidden shadow-sm hover:shadow-lg transition flex flex-col lg:flex-row group ${
+                  !isAvailable ? 'is-unavailable' : ''
+                }`}
               >
-                {/* Room Image */}
-                <div className="lg:w-2/5 relative h-64 lg:h-auto bg-slate-900 overflow-hidden">
+                {/* Room Image (Section 11: blur & overlay label saat tidak tersedia) */}
+                <div className="room-photo-wrap lg:w-2/5 relative h-64 lg:h-auto bg-slate-900 overflow-hidden">
                   <img
                     src={room.image_url}
                     alt={room.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                    className={`room-photo w-full h-full object-cover transition duration-500 ${
+                      !isAvailable
+                        ? 'filter blur-[2px] opacity-75'
+                        : 'group-hover:scale-105'
+                    }`}
                     onError={(e) => {
                       e.target.src =
                         'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
                     }}
                   />
+
+                  {/* Section 11: Overlay Label Tidak Tersedia */}
+                  {!isAvailable && (
+                    <div className="availability-label absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4">
+                      <span className="px-4 py-2 bg-rose-600/95 text-white font-black text-xs sm:text-sm uppercase tracking-widest rounded-2xl shadow-xl border border-rose-400/40">
+                        Tidak Tersedia
+                      </span>
+                    </div>
+                  )}
+
                   <div className="absolute top-4 left-4 bg-slate-950/80 backdrop-blur-md px-3 py-1 rounded-full text-[11px] font-bold text-white flex items-center space-x-1">
                     <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                     <span>5-Star Comfort</span>
@@ -248,19 +273,17 @@ export default function ServicesPage() {
                       <h3 className="text-2xl font-black text-slate-900 group-hover:text-amber-600 transition">
                         {room.name}
                       </h3>
-                      {room.available_count !== undefined && (
-                        <span
-                          className={`text-xs font-bold px-3 py-1 rounded-full border ${
-                            room.available_count > 0
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}
-                        >
-                          {room.available_count > 0
-                            ? `Tersedia ${room.available_count} Kamar`
-                            : 'Penuh (Sold Out)'}
-                        </span>
-                      )}
+                      <span
+                        className={`text-xs font-bold px-3 py-1 rounded-full border ${
+                          isAvailable
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}
+                      >
+                        {isAvailable
+                          ? `Tersedia ${availableSlots} Kamar`
+                          : 'Penuh (Sold Out)'}
+                      </span>
                     </div>
 
                     <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
@@ -273,7 +296,7 @@ export default function ServicesPage() {
                         🛏️ {room.bed_type}
                       </span>
                       <span className="bg-slate-100 px-3 py-1.5 rounded-xl font-semibold">
-                        👥 Max {room.max_occupancy} Tamu
+                        👥 Max {room.max_occupancy || room.max_adults} Tamu
                       </span>
                       <span className="bg-slate-100 px-3 py-1.5 rounded-xl font-semibold">
                         📐 {room.size_sqm} meter persegi
@@ -296,7 +319,7 @@ export default function ServicesPage() {
                     )}
                   </div>
 
-                  {/* Pricing and Book Button */}
+                  {/* Pricing and Book Button (Section 11: dinonaktifkan / Kamar penuh saat tidak tersedia) */}
                   <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                     <div>
                       <div className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
@@ -315,13 +338,24 @@ export default function ServicesPage() {
                       )}
                     </div>
 
-                    <Link
-                      to={`/book/${room.id}?check_in=${checkIn}&check_out=${checkOut}&adults=${adults}&children=${children}`}
-                      className="px-6 py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-2xl shadow-md shadow-amber-600/30 transition flex items-center justify-center space-x-2 self-stretch sm:self-auto"
-                    >
-                      <span>Pilih & Pesan Suite</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </Link>
+                    {isAvailable ? (
+                      <Link
+                        to={`/book/${room.id}?check_in=${checkIn}&check_out=${checkOut}&adults=${adults}&children=${children}`}
+                        className="px-6 py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-2xl shadow-md shadow-amber-600/30 transition flex items-center justify-center space-x-2 self-stretch sm:self-auto"
+                      >
+                        <span>Pilih & Pesan Suite</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="px-6 py-3.5 bg-slate-200 text-slate-500 font-black text-xs rounded-2xl shadow-none transition flex items-center justify-center space-x-2 self-stretch sm:self-auto cursor-not-allowed opacity-60"
+                        title="Mohon maaf kamar sudah dibooking orang lain dan sudah tidak tersedia"
+                      >
+                        <span>Kamar Penuh</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

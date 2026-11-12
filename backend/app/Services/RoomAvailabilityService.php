@@ -19,12 +19,20 @@ class RoomAvailabilityService
         $totalRooms = $roomType->total_rooms;
 
         // Find all active bookings that overlap with this date range
+        // Exclude pending bookings whose payment expiration deadline has already elapsed
         $overlappingBookings = Booking::where('room_type_id', $roomType->id)
-            ->whereIn('status', [
-                Booking::STATUS_PENDING_PAYMENT,
-                Booking::STATUS_CONFIRMED,
-                Booking::STATUS_CHECKED_IN,
-            ])
+            ->where(function ($q) {
+                $q->whereIn('status', [
+                    Booking::STATUS_CONFIRMED,
+                    Booking::STATUS_CHECKED_IN,
+                ])->orWhere(function ($p) {
+                    $p->where('status', Booking::STATUS_PENDING_PAYMENT)
+                      ->where(function ($exp) {
+                          $exp->whereNull('expires_at')
+                              ->orWhere('expires_at', '>', Carbon::now());
+                      });
+                });
+            })
             ->where(function ($q) use ($checkIn, $checkOut) {
                 $q->where('check_in_date', '<', $checkOut->toDateString())
                   ->where('check_out_date', '>', $checkIn->toDateString());
@@ -93,7 +101,7 @@ class RoomAvailabilityService
 
         return Room::where('room_type_id', $roomType->id)
             ->whereNotIn('id', $occupiedRoomIds)
-            ->whereNotIn('status', ['maintenance'])
+            ->where('status', 'available')
             ->orderBy('floor')
             ->orderBy('room_number')
             ->get();

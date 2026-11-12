@@ -23,6 +23,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  TicketPercent,
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -62,8 +63,9 @@ export default function AdminLayout() {
     setLoadingKey(true);
     try {
       const res = await adminService.getCancellationKey();
-      if (res.data?.data?.cancellation_key) {
-        setCancellationKey(res.data.data.cancellation_key);
+      const key = res.data?.cancellation_key || res.data?.data?.cancellation_key || res.cancellation_key;
+      if (key) {
+        setCancellationKey(key);
       }
     } catch (err) {
       toast.error('Gagal memuat key otorisasi pembatalan.');
@@ -76,8 +78,9 @@ export default function AdminLayout() {
     setGeneratingKey(true);
     try {
       const res = await adminService.generateCancellationKey();
-      if (res.data?.data?.cancellation_key) {
-        setCancellationKey(res.data.data.cancellation_key);
+      const key = res.data?.cancellation_key || res.data?.data?.cancellation_key || res.cancellation_key;
+      if (key) {
+        setCancellationKey(key);
         toast.success('Key otorisasi pembatalan baru berhasil digenerate!');
       }
     } catch (err) {
@@ -101,6 +104,7 @@ export default function AdminLayout() {
     { to: '/admin/rooms', label: 'Unit Kamar Fisik', icon: DoorOpen },
     { to: '/admin/services', label: 'Tipe Kamar & Suite', icon: BedDouble },
     { to: '/admin/categories', label: 'Layanan Tambahan (Add-on)', icon: Coffee },
+    { to: '/admin/coupons', label: 'Kupon & Promo Diskon', icon: TicketPercent },
     { to: '/admin/customers', label: 'Buku Tamu', icon: Users },
     { to: '/admin/payments', label: 'Transaksi Midtrans', icon: CreditCard },
     { to: '/admin/reports', label: 'Laporan Finansial', icon: BarChart3 },

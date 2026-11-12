@@ -18,6 +18,7 @@ class Booking extends Model
     public const STATUS_CHECKED_OUT = 'CHECKED_OUT';
     public const STATUS_CANCELLED = 'CANCELLED';
     public const STATUS_EXPIRED = 'EXPIRED';
+    public const STATUS_PAID_NO_SLOT = 'PAID_NO_SLOT';
 
     protected $fillable = [
         'booking_code',
@@ -40,6 +41,7 @@ class Booking extends Model
         'discount_code',
         'discount_amount',
         'total_amount',
+        'payment_method',
         'special_requests',
         'status',
         'expires_at',
@@ -88,6 +90,11 @@ class Booking extends Model
     }
 
     public function assignedRoom(): BelongsTo
+    {
+        return $this->belongsTo(Room::class, 'assigned_room_id');
+    }
+
+    public function room(): BelongsTo
     {
         return $this->belongsTo(Room::class, 'assigned_room_id');
     }

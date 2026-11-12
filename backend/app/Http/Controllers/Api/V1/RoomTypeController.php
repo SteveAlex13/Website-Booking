@@ -80,7 +80,9 @@ class RoomTypeController extends Controller
                 'amenities' => $rt->amenities,
                 'is_available' => $availability['is_available'],
                 'available_rooms_count' => $availability['available_rooms_count'],
+                'available_slots' => $availability['available_rooms_count'],
                 'total_rooms' => $rt->total_rooms,
+                'capacity' => $rt->total_rooms,
                 'rating' => $averageRating ? round($averageRating, 1) : 5.0,
                 'reviews_count' => $reviewsCount,
             ];

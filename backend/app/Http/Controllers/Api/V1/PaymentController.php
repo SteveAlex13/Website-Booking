@@ -35,6 +35,21 @@ class PaymentController extends Controller
             ], 403);
         }
 
+        // Cash on Arrival (Bayar di Hotel)
+        if ($booking->payment_method === 'cash') {
+            $payment = Payment::where('booking_id', $booking->id)->latest()->first();
+            return response()->json([
+                'success' => true,
+                'message' => 'Metode bayar tunai di hotel (Front Desk).',
+                'data' => [
+                    'payment_id' => $payment?->id,
+                    'order_id' => $payment?->order_id,
+                    'is_cash' => true,
+                    'gross_amount' => (float) $booking->total_amount,
+                ],
+            ]);
+        }
+
         try {
             $checkoutData = $this->paymentService->createCheckout($booking);
 

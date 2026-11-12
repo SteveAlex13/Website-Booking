@@ -103,6 +103,13 @@ Route::prefix('v1')->group(function () {
             // Customers & Payments
             Route::get('/customers', [AdminDashboardController::class, 'customers']);
             Route::get('/payments', [PaymentController::class, 'adminIndex']);
+
+            // Discount Coupons Management
+            Route::get('/coupons', [CouponController::class, 'index']);
+            Route::post('/coupons', [CouponController::class, 'store']);
+            Route::put('/coupons/{id}', [CouponController::class, 'update']);
+            Route::patch('/coupons/{id}/toggle', [CouponController::class, 'toggleActive']);
+            Route::delete('/coupons/{id}', [CouponController::class, 'destroy']);
         });
     });
 });

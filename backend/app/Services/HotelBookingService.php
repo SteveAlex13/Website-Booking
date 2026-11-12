@@ -7,6 +7,7 @@ use App\Models\BookingExtraItem;
 use App\Models\BookingStatusHistory;
 use App\Models\DiscountCoupon;
 use App\Models\ExtraService;
+use App\Models\Payment;
 use App\Models\Room;
 use App\Models\RoomType;
 use App\Models\User;
@@ -52,7 +53,7 @@ class HotelBookingService
             $availability = $this->availabilityService->checkRoomTypeAvailability($roomType, $checkIn, $checkOut);
 
             if (! $availability['is_available'] || $availability['available_rooms_count'] < 1) {
-                throw new Exception('Maaf, kamar untuk tipe ini sudah penuh pada tanggal yang Anda pilih. Silakan pilih tanggal atau tipe kamar lain.');
+                throw new Exception('Mohon maaf kamar sudah dibooking orang lain dan sudah tidak tersedia.');
             }
 
             // 3. Calculate room cost across nights
@@ -118,10 +119,15 @@ class HotelBookingService
             $taxAndService = round($taxableSubtotal * 0.10, 2);
             $grandTotal = round($taxableSubtotal + $taxAndService, 2);
 
-            // 7. Booking code & Expiration (15 minutes)
+            $paymentMethod = $data['payment_method'] ?? 'midtrans';
+            $isCash = ($paymentMethod === 'cash');
+
+            // 7. Booking code & Expiration
             $bookingCode = $this->generateUniqueBookingCode();
             $expirationMinutes = (int) config('midtrans.booking_expiration_minutes', 15);
-            $expiresAt = Carbon::now()->addMinutes($expirationMinutes);
+            $expiresAt = $isCash ? $checkIn->copy()->endOfDay() : Carbon::now()->addMinutes($expirationMinutes);
+            $initialStatus = $isCash ? Booking::STATUS_CONFIRMED : Booking::STATUS_PENDING_PAYMENT;
+            $confirmedAt = $isCash ? Carbon::now() : null;
 
             // 8. Persist Booking
             $booking = Booking::create([
@@ -144,24 +150,46 @@ class HotelBookingService
                 'discount_amount' => $discountAmount,
                 'tax_and_service_amount' => $taxAndService,
                 'total_amount' => $grandTotal,
+                'payment_method' => $paymentMethod,
                 'special_requests' => $data['special_requests'] ?? null,
-                'status' => Booking::STATUS_PENDING_PAYMENT,
+                'status' => $initialStatus,
+                'confirmed_at' => $confirmedAt,
                 'expires_at' => $expiresAt,
             ]);
 
-            // 8. Attach extra items
+            // 9. Attach extra items
             foreach ($extraItemsToCreate as $item) {
                 $booking->extraItems()->create($item);
             }
 
-            // 9. Status history
-            BookingStatusHistory::create([
-                'booking_id' => $booking->id,
-                'old_status' => null,
-                'new_status' => Booking::STATUS_PENDING_PAYMENT,
-                'changed_by' => $user->id,
-                'note' => 'Reservasi hotel dibuat dan menunggu pembayaran via Midtrans Snap.',
-            ]);
+            // 10. Handle Cash vs Midtrans payment initialization
+            if ($isCash) {
+                Payment::create([
+                    'booking_id' => $booking->id,
+                    'order_id' => "CASH-{$bookingCode}",
+                    'payment_type' => 'cash',
+                    'gross_amount' => $grandTotal,
+                    'status' => Payment::STATUS_PENDING,
+                    'provider_status' => 'pay_at_hotel',
+                    'expired_at' => $expiresAt,
+                ]);
+
+                BookingStatusHistory::create([
+                    'booking_id' => $booking->id,
+                    'old_status' => null,
+                    'new_status' => Booking::STATUS_CONFIRMED,
+                    'changed_by' => $user->id,
+                    'note' => 'Reservasi dibuat dengan metode Bayar Tunai di Hotel (Cash on Arrival). Menunggu pelunasan saat Check-In.',
+                ]);
+            } else {
+                BookingStatusHistory::create([
+                    'booking_id' => $booking->id,
+                    'old_status' => null,
+                    'new_status' => Booking::STATUS_PENDING_PAYMENT,
+                    'changed_by' => $user->id,
+                    'note' => 'Reservasi hotel dibuat dan menunggu pembayaran via Midtrans Snap.',
+                ]);
+            }
 
             return $booking;
         });
@@ -241,6 +269,16 @@ class HotelBookingService
             $locked = Booking::where('id', $booking->id)->lockForUpdate()->firstOrFail();
             $room = Room::where('id', $roomId)->lockForUpdate()->firstOrFail();
 
+            if ($room->status !== 'available') {
+                $statusLabels = [
+                    'occupied' => 'Terisi (Occupied)',
+                    'cleaning' => 'Sedang Dibersihkan (Cleaning)',
+                    'maintenance' => 'Perbaikan (Maintenance)',
+                ];
+                $currentLabel = $statusLabels[$room->status] ?? $room->status;
+                throw new Exception("Kamar No. {$room->room_number} saat ini tidak siap untuk Check-In (Status: {$currentLabel}). Silakan pilih unit kamar fisik yang berstatus Tersedia (Ready Clean).");
+            }
+
             $oldStatus = $locked->status;
             $locked->status = Booking::STATUS_CHECKED_IN;
             $locked->assigned_room_id = $room->id;
@@ -249,6 +287,19 @@ class HotelBookingService
 
             $room->status = 'occupied';
             $room->save();
+
+            // Settle pending cash payment if booking was cash on arrival
+            $cashPayment = Payment::where('booking_id', $locked->id)
+                ->where('payment_type', 'cash')
+                ->where('status', Payment::STATUS_PENDING)
+                ->first();
+
+            if ($cashPayment) {
+                $cashPayment->status = Payment::STATUS_PAID;
+                $cashPayment->paid_at = Carbon::now();
+                $cashPayment->provider_status = 'settled_at_front_desk';
+                $cashPayment->save();
+            }
 
             BookingStatusHistory::create([
                 'booking_id' => $locked->id,

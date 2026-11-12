@@ -27,8 +27,9 @@ export default function CustomerProfilePage() {
       setLoadingKey(true);
       authService.getCancellationKey()
         .then((res) => {
-          if (res.data?.data?.cancellation_key) {
-            setCancellationKey(res.data.data.cancellation_key);
+          const key = res.data?.cancellation_key || res.data?.data?.cancellation_key || res.cancellation_key;
+          if (key) {
+            setCancellationKey(key);
           }
         })
         .catch(() => {})
@@ -40,8 +41,9 @@ export default function CustomerProfilePage() {
     setGeneratingKey(true);
     try {
       const res = await authService.generateCancellationKey();
-      if (res.data?.data?.cancellation_key) {
-        setCancellationKey(res.data.data.cancellation_key);
+      const key = res.data?.cancellation_key || res.data?.data?.cancellation_key || res.cancellation_key;
+      if (key) {
+        setCancellationKey(key);
         toast.success('Key otorisasi pembatalan baru berhasil dibuat!');
       }
     } catch (err) {

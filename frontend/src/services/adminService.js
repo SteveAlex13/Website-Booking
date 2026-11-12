@@ -138,4 +138,25 @@ export const adminService = {
   async getPayments(params = {}) {
     return await api.get('/admin/payments', { params });
   },
+
+  // Discount Coupons Management
+  async getCoupons(params = {}) {
+    return await api.get('/admin/coupons', { params });
+  },
+
+  async createCoupon(data) {
+    return await api.post('/admin/coupons', data);
+  },
+
+  async updateCoupon(id, data) {
+    return await api.put(`/admin/coupons/${id}`, data);
+  },
+
+  async toggleCouponStatus(id) {
+    return await api.patch(`/admin/coupons/${id}/toggle`);
+  },
+
+  async deleteCoupon(id) {
+    return await api.delete(`/admin/coupons/${id}`);
+  },
 };

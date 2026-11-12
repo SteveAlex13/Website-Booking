@@ -30,7 +30,18 @@ class CheckRole
             return $next($request);
         }
 
-        if (! in_array($user->role, $roles)) {
+        // Flatten/split roles in case passed as comma-separated string
+        $allowedRoles = [];
+        foreach ($roles as $r) {
+            foreach (explode(',', $r) as $subRole) {
+                $trimmed = trim($subRole);
+                if ($trimmed !== '') {
+                    $allowedRoles[] = $trimmed;
+                }
+            }
+        }
+
+        if (! in_array($user->role, $allowedRoles)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Forbidden. Akses ditolak.',

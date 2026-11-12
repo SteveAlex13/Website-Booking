@@ -90,6 +90,12 @@ export const BOOKING_STATUS_CONFIG = {
     text: 'text-gray-600',
     border: 'border-gray-300',
   },
+  PAID_NO_SLOT: {
+    label: 'Kamar Penuh (Perlu Refund)',
+    bg: 'bg-orange-50',
+    text: 'text-orange-700',
+    border: 'border-orange-200',
+  },
 };
 
 export const PAYMENT_STATUS_CONFIG = {
@@ -99,4 +105,5 @@ export const PAYMENT_STATUS_CONFIG = {
   EXPIRED: { label: 'Kedaluwarsa', bg: 'bg-slate-100', text: 'text-slate-600' },
   CANCELLED: { label: 'Dibatalkan', bg: 'bg-rose-50', text: 'text-rose-700' },
   REFUNDED: { label: 'Refund', bg: 'bg-purple-50', text: 'text-purple-700' },
+  PAID_NO_SLOT: { label: 'Perlu Refund', bg: 'bg-orange-50', text: 'text-orange-700' },
 };

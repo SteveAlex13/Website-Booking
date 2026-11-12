@@ -90,7 +90,8 @@ class MidtransService
             'expiry' => [
                 'start_time' => date('Y-m-d H:i:s O'),
                 'unit' => 'minute',
-                'duration' => (int) config('midtrans.booking_expiration_minutes', 15),
+                // Keep Midtrans payment expiry shorter than room hold (e.g. 13m payment for 15m hold)
+                'duration' => max(1, (int) config('midtrans.booking_expiration_minutes', 15) - 2),
             ],
             'enabled_payments' => [
                 'qris',

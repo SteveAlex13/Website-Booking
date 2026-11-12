@@ -31,6 +31,7 @@ class HotelBookingController extends Controller
             'room_type_id' => 'required|exists:room_types,id',
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
+            'payment_method' => 'nullable|in:midtrans,cash',
             'coupon_code' => 'nullable|string|max:50',
             'extras' => 'nullable|array',
             'extras.*.id' => 'exists:extra_services,id',
@@ -140,6 +141,7 @@ class HotelBookingController extends Controller
             'room_type_id' => 'required|exists:room_types,id',
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
+            'payment_method' => 'nullable|in:midtrans,cash',
             'coupon_code' => 'nullable|string|max:50',
             'customer_name' => 'nullable|string|max:100',
             'customer_email' => 'nullable|email|max:150',
@@ -158,13 +160,19 @@ class HotelBookingController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Reservasi kamar berhasil dibuat. Silakan selesaikan pembayaran.',
-                'data' => $booking->load(['roomType', 'extraItems', 'discountCoupon']),
+                'data' => $booking->load(['roomType', 'extraItems', 'discountCoupon', 'latestPayment']),
             ], 201);
         } catch (Exception $e) {
+            $message = $e->getMessage();
+            $isOverbooked = str_contains($message, 'sudah dibooking orang lain')
+                || str_contains($message, 'sudah tidak tersedia')
+                || str_contains($message, 'sudah penuh');
+
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
+                'error_code' => $isOverbooked ? 'ROOM_ALREADY_BOOKED' : 'BOOKING_FAILED',
+                'message' => $isOverbooked ? 'Mohon maaf kamar sudah dibooking orang lain dan sudah tidak tersedia.' : $message,
+            ], $isOverbooked ? 409 : 422);
         }
     }
 
@@ -288,11 +296,19 @@ class HotelBookingController extends Controller
         $checkIn = Carbon::parse($booking->check_in_date);
         $checkOut = Carbon::parse($booking->check_out_date);
 
-        $rooms = $this->availabilityService->getAvailablePhysicalRooms($booking->roomType, $checkIn, $checkOut);
+        $readyRooms = $this->availabilityService->getAvailablePhysicalRooms($booking->roomType, $checkIn, $checkOut);
+        $allRooms = \App\Models\Room::where('room_type_id', $booking->room_type_id)
+            ->orderBy('floor')
+            ->orderBy('room_number')
+            ->get();
 
         return response()->json([
             'success' => true,
-            'data' => $rooms,
+            'data' => [
+                'rooms' => $readyRooms,
+                'available_rooms' => $readyRooms,
+                'all_rooms' => $allRooms,
+            ],
         ]);
     }
 

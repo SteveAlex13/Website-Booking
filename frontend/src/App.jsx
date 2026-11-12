@@ -30,6 +30,7 @@ import AdminBookingsPage from './pages/admin/AdminBookingsPage';
 import AdminCustomersPage from './pages/admin/AdminCustomersPage';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import AdminReportsPage from './pages/admin/AdminReportsPage';
+import AdminCouponsPage from './pages/admin/AdminCouponsPage';
 
 export default function App() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="dashboard" element={<AdminDashboardPage />} />
               <Route path="rooms" element={<AdminRoomsPage />} />
               <Route path="categories" element={<AdminCategoriesPage />} />
+              <Route path="coupons" element={<AdminCouponsPage />} />
               <Route path="services" element={<AdminServicesPage />} />
               <Route path="schedules" element={<AdminSchedulesPage />} />
               <Route path="bookings" element={<AdminBookingsPage />} />
