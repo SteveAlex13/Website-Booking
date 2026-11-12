@@ -61,6 +61,14 @@ class AuthController extends Controller
             ]);
         }
 
+        // Deactivated accounts cannot log in
+        if (! $user->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun Anda dinonaktifkan. Hubungi administrator hotel.',
+            ], 403);
+        }
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([

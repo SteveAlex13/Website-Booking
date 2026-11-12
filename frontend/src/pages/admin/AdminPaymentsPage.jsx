@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { adminService } from '../../services/adminService';
+import { useToast } from '../../contexts/ToastContext';
+import ConfirmModal from '../../components/common/ConfirmModal';
 import { formatRupiah, formatDateTime, PAYMENT_STATUS_CONFIG } from '../../utils/format';
-import { CreditCard, Search, Eye, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Search, Eye, Undo2 } from 'lucide-react';
+
+// The refund of this payment that is still waiting to be processed, if any
+const pendingRefundOf = (payment) => (payment.refunds || []).find((r) => r.status === 'PENDING');
 
 export default function AdminPaymentsPage() {
+  const toast = useToast();
+  const [refundTarget, setRefundTarget] = useState(null);
+  const [processingRefund, setProcessingRefund] = useState(false);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
@@ -37,6 +45,25 @@ export default function AdminPaymentsPage() {
     fetchPayments();
   };
 
+  const handleProcessRefund = async () => {
+    const refund = refundTarget && pendingRefundOf(refundTarget);
+    if (!refund) return;
+
+    setProcessingRefund(true);
+    try {
+      const res = await adminService.processRefund(refund.id);
+      toast.success(res.message || 'Refund berhasil diproses.');
+      setRefundTarget(null);
+      fetchPayments();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Gagal memproses refund.');
+    } finally {
+      setProcessingRefund(false);
+    }
+  };
+
+  const pendingRefundCount = payments.filter((p) => pendingRefundOf(p)).length;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -57,6 +84,8 @@ export default function AdminPaymentsPage() {
             <option value="FAILED">FAILED</option>
             <option value="EXPIRED">EXPIRED</option>
             <option value="CANCELLED">CANCELLED</option>
+            <option value="REFUND_PENDING">MENUNGGU REFUND</option>
+            <option value="REFUNDED">REFUNDED</option>
           </select>
 
           <form onSubmit={handleSearch} className="relative">
@@ -71,6 +100,18 @@ export default function AdminPaymentsPage() {
           </form>
         </div>
       </div>
+
+      {pendingRefundCount > 0 && (
+        <div className="p-4 rounded-2xl bg-orange-50 border border-orange-200 text-xs text-orange-900 flex items-center justify-between gap-3">
+          <span className="flex items-center space-x-2">
+            <Undo2 className="w-4 h-4 text-orange-600" />
+            <span>
+              <strong>{pendingRefundCount} refund</strong> menunggu diproses. Klik &quot;Proses Refund&quot; pada baris
+              terkait untuk mengembalikan dana ke tamu lewat Midtrans.
+            </span>
+          </span>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
@@ -123,6 +164,15 @@ export default function AdminPaymentsPage() {
                         {p.paid_at ? formatDateTime(p.paid_at) : '-'}
                       </td>
                       <td className="px-6 py-4 text-right whitespace-nowrap">
+                        {pendingRefundOf(p) && (
+                          <button
+                            onClick={() => setRefundTarget(p)}
+                            className="mr-2 inline-flex items-center space-x-1 px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 font-bold rounded-xl text-[11px] transition"
+                          >
+                            <Undo2 className="w-3.5 h-3.5" />
+                            <span>Proses Refund</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => setSelectedPayment(p)}
                           className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition"
@@ -139,6 +189,24 @@ export default function AdminPaymentsPage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!refundTarget}
+        onClose={() => setRefundTarget(null)}
+        onConfirm={handleProcessRefund}
+        loading={processingRefund}
+        type="warning"
+        title="Proses Refund?"
+        message={
+          refundTarget
+            ? `Kembalikan ${formatRupiah(pendingRefundOf(refundTarget)?.amount)} untuk booking ${
+                refundTarget.booking?.booking_code || '-'
+              } (${refundTarget.order_id}) lewat Midtrans. Tindakan ini tidak bisa dibatalkan.`
+            : ''
+        }
+        confirmText="Ya, Proses Refund"
+        cancelText="Batal"
+      />
 
       {/* Inspect Modal */}
       {selectedPayment && (

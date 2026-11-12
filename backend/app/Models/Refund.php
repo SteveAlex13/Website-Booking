@@ -10,6 +10,9 @@ class Refund extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 'PENDING';
+    public const STATUS_PROCESSED = 'PROCESSED';
+
     protected $fillable = [
         'payment_id',
         'refund_id',

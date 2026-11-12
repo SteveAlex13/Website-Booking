@@ -7,6 +7,8 @@ import { ToastProvider } from './contexts/ToastContext';
 import PublicLayout from './layouts/PublicLayout';
 import CustomerLayout from './layouts/CustomerLayout';
 import AdminLayout from './layouts/AdminLayout';
+import RequireSuperAdmin from './components/common/RequireSuperAdmin';
+import TopLoadingBar from './components/common/TopLoadingBar';
 
 // Public & Auth Pages
 import HomePage from './pages/public/HomePage';
@@ -30,10 +32,12 @@ import AdminBookingsPage from './pages/admin/AdminBookingsPage';
 import AdminCustomersPage from './pages/admin/AdminCustomersPage';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import AdminReportsPage from './pages/admin/AdminReportsPage';
+import AdminCouponsPage from './pages/admin/AdminCouponsPage';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
 
 const SITE_NAME = 'The Royal Nusantara';
 
-// Browser tab title for each route. Add new pages here.
+// Browser tab title for each route. Add one line here for every new page.
 const PAGE_TITLES = [
   ['/', 'Beranda'],
   ['/services', 'Kamar & Suite'],
@@ -43,15 +47,17 @@ const PAGE_TITLES = [
   ['/register', 'Daftar'],
   ['/customer/dashboard', 'Reservasi Saya'],
   ['/customer/profile', 'Profil Tamu'],
-  ['/admin/dashboard', 'Dashboard Admin'],
-  ['/admin/rooms', 'Unit Kamar'],
+  ['/admin/dashboard', 'Dashboard Hotel'],
+  ['/admin/bookings', 'Reservasi & Front Desk'],
+  ['/admin/rooms', 'Unit Kamar Fisik'],
+  ['/admin/services', 'Tipe Kamar & Suite'],
   ['/admin/categories', 'Layanan Tambahan'],
-  ['/admin/services', 'Tipe Kamar'],
+  ['/admin/coupons', 'Kupon & Promo'],
   ['/admin/schedules', 'Profil Hotel'],
-  ['/admin/bookings', 'Front Desk & Reservasi'],
-  ['/admin/customers', 'Data Pelanggan'],
-  ['/admin/payments', 'Pembayaran'],
-  ['/admin/reports', 'Laporan'],
+  ['/admin/customers', 'Buku Tamu'],
+  ['/admin/users', 'Kelola User'],
+  ['/admin/payments', 'Transaksi Pembayaran'],
+  ['/admin/reports', 'Laporan Finansial'],
 ];
 
 function DocumentTitle() {
@@ -71,6 +77,7 @@ export default function App() {
       <ToastProvider>
         <BrowserRouter>
           <DocumentTitle />
+          <TopLoadingBar />
           <Routes>
             {/* Public Website */}
             <Route element={<PublicLayout />}>
@@ -90,15 +97,20 @@ export default function App() {
 
             {/* Admin Area */}
             <Route path="/admin" element={<AdminLayout />}>
+              {/* Front desk + super admin */}
               <Route path="dashboard" element={<AdminDashboardPage />} />
               <Route path="rooms" element={<AdminRoomsPage />} />
-              <Route path="categories" element={<AdminCategoriesPage />} />
-              <Route path="services" element={<AdminServicesPage />} />
-              <Route path="schedules" element={<AdminSchedulesPage />} />
               <Route path="bookings" element={<AdminBookingsPage />} />
               <Route path="customers" element={<AdminCustomersPage />} />
-              <Route path="payments" element={<AdminPaymentsPage />} />
-              <Route path="reports" element={<AdminReportsPage />} />
+
+              {/* Super admin only */}
+              <Route path="categories" element={<RequireSuperAdmin><AdminCategoriesPage /></RequireSuperAdmin>} />
+              <Route path="coupons" element={<RequireSuperAdmin><AdminCouponsPage /></RequireSuperAdmin>} />
+              <Route path="services" element={<RequireSuperAdmin><AdminServicesPage /></RequireSuperAdmin>} />
+              <Route path="schedules" element={<RequireSuperAdmin><AdminSchedulesPage /></RequireSuperAdmin>} />
+              <Route path="users" element={<RequireSuperAdmin><AdminUsersPage /></RequireSuperAdmin>} />
+              <Route path="payments" element={<RequireSuperAdmin><AdminPaymentsPage /></RequireSuperAdmin>} />
+              <Route path="reports" element={<RequireSuperAdmin><AdminReportsPage /></RequireSuperAdmin>} />
             </Route>
 
             {/* Catch-all */}

@@ -131,6 +131,40 @@ class MidtransService
     }
 
     /**
+     * Refund a settled transaction at Midtrans.
+     * Returns the refund key. With the placeholder key (no real account) it only simulates success.
+     *
+     * @throws Exception when Midtrans rejects the refund
+     */
+    public function refund(string $orderId, int $amount, string $refundKey, ?string $reason = null): string
+    {
+        $serverKey = config('midtrans.server_key');
+        if (empty($serverKey) || str_contains($serverKey, 'placeholder')) {
+            Log::info('Midtrans placeholder key detected. Simulating refund.', ['order_id' => $orderId]);
+            return $refundKey;
+        }
+
+        try {
+            $response = MidtransTransaction::refund($orderId, [
+                'refund_key' => $refundKey,
+                'amount' => $amount,
+                'reason' => substr((string) $reason, 0, 200),
+            ]);
+        } catch (Exception $e) {
+            Log::warning("Midtrans refund failed for {$orderId}: " . $e->getMessage());
+            throw new Exception('Midtrans menolak refund: ' . $e->getMessage());
+        }
+
+        $statusCode = (string) ($response->status_code ?? '');
+        if ($statusCode !== '' && ! str_starts_with($statusCode, '2')) {
+            $message = $response->status_message ?? 'status ' . $statusCode;
+            throw new Exception('Midtrans menolak refund: ' . $message);
+        }
+
+        return $refundKey;
+    }
+
+    /**
      * Get transaction status from Midtrans API directly.
      */
     public function getTransactionStatus(string $orderId): ?object

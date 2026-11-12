@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { serviceService } from '../../services/serviceService';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, formatRoomCapacity, formatRoomSize } from '../../utils/format';
+import RoomImage from '../../components/common/RoomImage';
 import {
   Hotel,
   Calendar,
@@ -41,7 +42,12 @@ export default function HomePage() {
       try {
         const [hotelRes, roomRes, extrasRes] = await Promise.all([
           serviceService.getHotel(),
-          serviceService.getRoomTypes(),
+          serviceService.getRoomTypes({
+            check_in: checkIn,
+            check_out: checkOut,
+            adults,
+            children,
+          }),
           serviceService.getExtraServices(),
         ]);
         if (hotelRes.data) setHotel(hotelRes.data);
@@ -276,37 +282,64 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {safeRoomTypes.slice(0, 3).map((room) => (
+            {safeRoomTypes.slice(0, 3).map((room) => {
+              const availableSlots = room.available_slots !== undefined 
+                ? room.available_slots 
+                : (room.available_count !== undefined 
+                  ? room.available_count 
+                  : (room.available_rooms_count !== undefined 
+                    ? room.available_rooms_count 
+                    : (room.is_available === false ? 0 : 1)));
+              const isAvailable = availableSlots > 0 && room.is_available !== false;
+
+              return (
               <div
                 key={room.id}
-                className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group"
+                className={`room-card bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group ${
+                  !isAvailable ? 'is-unavailable' : ''
+                }`}
               >
-                {/* Image / Banner */}
-                <div className="relative h-56 bg-slate-900 overflow-hidden">
-                  <img
-                    src={room.image_url}
+                {/* Image / Banner (Section 11: blur & label saat tidak tersedia) */}
+                <div className="room-photo-wrap relative h-56 bg-slate-900 overflow-hidden">
+                  <RoomImage
+                    src={room.image_url || room.featured_image}
                     alt={room.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                    onError={(e) => {
-                      e.target.src =
-                        'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
-                    }}
+                    className={`room-photo w-full h-full object-cover transition duration-500 ${
+                      !isAvailable ? 'filter blur-[2px] opacity-75' : 'group-hover:scale-105'
+                    }`}
                   />
+
+                  {/* Section 11: Overlay Label Tidak Tersedia */}
+                  {!isAvailable && (
+                    <div className="availability-label absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4">
+                      <span className="px-3.5 py-1.5 bg-rose-600/95 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-xl border border-rose-400/40">
+                        Tidak Tersedia
+                      </span>
+                    </div>
+                  )}
+
                   <div className="absolute top-4 left-4 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-full text-[11px] font-bold text-white flex items-center space-x-1.5">
                     <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                     <span>Luxury Suite</span>
                   </div>
                   <div className="absolute bottom-4 right-4 bg-amber-500/90 text-white text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-sm">
-                    {room.size_sqm} m²
+                    {formatRoomSize(room)}
                   </div>
                 </div>
 
                 {/* Details */}
                 <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
                   <div>
-                    <h3 className="text-xl font-black text-slate-900 group-hover:text-amber-600 transition">
-                      {room.name}
-                    </h3>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <h3 className="text-xl font-black text-slate-900 group-hover:text-amber-600 transition">
+                        {room.name}
+                      </h3>
+                      {!isAvailable && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                          Penuh
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-500 mt-2 line-clamp-2 leading-relaxed">
                       {room.description}
                     </p>
@@ -316,7 +349,7 @@ export default function HomePage() {
                         🛏️ {room.bed_type}
                       </span>
                       <span className="bg-slate-100 px-2.5 py-1 rounded-lg font-medium">
-                        👥 Max {room.max_occupancy} Tamu
+                        👥 Max {formatRoomCapacity(room)}
                       </span>
                     </div>
 
@@ -347,16 +380,28 @@ export default function HomePage() {
                       <span className="text-[10px] text-slate-500 font-semibold"> / malam</span>
                     </div>
 
-                    <Link
-                      to={`/book/${room.id}?check_in=${checkIn}&check_out=${checkOut}&adults=${adults}&children=${children}`}
-                      className="px-4 py-2.5 bg-slate-900 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-sm transition"
-                    >
-                      Pesan Suite
-                    </Link>
+                    {isAvailable ? (
+                      <Link
+                        to={`/book/${room.id}?check_in=${checkIn}&check_out=${checkOut}&adults=${adults}&children=${children}`}
+                        className="px-4 py-2.5 bg-slate-900 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-sm transition"
+                      >
+                        Pesan Suite
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="px-4 py-2.5 bg-slate-200 text-slate-500 text-xs font-bold rounded-xl cursor-not-allowed opacity-60"
+                        title="Mohon maaf kamar sudah dibooking orang lain dan sudah tidak tersedia"
+                      >
+                        Kamar Penuh
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         )}
       </section>

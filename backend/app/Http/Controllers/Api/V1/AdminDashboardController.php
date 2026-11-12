@@ -18,8 +18,11 @@ class AdminDashboardController extends Controller
     /**
      * Hotel Dashboard Statistics and KPI metrics.
      */
-    public function dashboard(): JsonResponse
+    public function dashboard(Request $request): JsonResponse
     {
+        // Front desk (role admin) must not see financial data.
+        $canSeeRevenue = $request->user()->isSuperAdmin();
+
         $today = Carbon::today()->toDateString();
 
         $totalRooms = Room::count();
@@ -27,7 +30,9 @@ class AdminDashboardController extends Controller
         $occupancyRate = $totalRooms > 0 ? round(($occupiedRooms / $totalRooms) * 100, 1) : 0;
 
         $totalCustomers = User::where('role', 'customer')->count();
-        $totalRevenue = Payment::where('status', Payment::STATUS_PAID)->sum('gross_amount');
+        $totalRevenue = $canSeeRevenue
+            ? Payment::where('status', Payment::STATUS_PAID)->sum('gross_amount')
+            : 0;
 
         // Hotel Operations Today
         $expectedArrivalsToday = Booking::where('check_in_date', $today)
@@ -58,7 +63,7 @@ class AdminDashboardController extends Controller
         // 7-day revenue trend
         $sevenDaysAgo = Carbon::today()->subDays(6);
         $revenueTrend = [];
-        for ($i = 0; $i < 7; $i++) {
+        for ($i = 0; $canSeeRevenue && $i < 7; $i++) {
             $date = $sevenDaysAgo->copy()->addDays($i);
             $dateStr = $date->toDateString();
             $dayRevenue = Payment::where('status', Payment::STATUS_PAID)
@@ -79,34 +84,37 @@ class AdminDashboardController extends Controller
             ->limit(5)
             ->get();
 
-        $recentPayments = Payment::with('booking')
-            ->orderBy('id', 'desc')
-            ->limit(5)
-            ->get();
+        $data = [
+            'total_rooms' => $totalRooms,
+            'occupied_rooms' => $occupiedRooms,
+            'occupancy_rate' => $occupancyRate,
+            'total_customers' => $totalCustomers,
+            'expected_arrivals_today' => $expectedArrivalsToday,
+            'expected_departures_today' => $expectedDeparturesToday,
+            'currently_checked_in' => $currentlyCheckedIn,
+            'room_statuses' => $roomStatuses,
+            'status_breakdown' => [
+                'pending_payment' => $pendingPayments,
+                'confirmed' => $confirmedBookings,
+                'checked_in' => $checkedInCount,
+                'checked_out' => $checkedOutCount,
+                'cancelled_or_expired' => $cancelledOrExpired,
+            ],
+            'recent_bookings' => $recentBookings,
+        ];
+
+        if ($canSeeRevenue) {
+            $data['total_revenue'] = (float) $totalRevenue;
+            $data['revenue_trend'] = $revenueTrend;
+            $data['recent_payments'] = Payment::with('booking')
+                ->orderBy('id', 'desc')
+                ->limit(5)
+                ->get();
+        }
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'total_rooms' => $totalRooms,
-                'occupied_rooms' => $occupiedRooms,
-                'occupancy_rate' => $occupancyRate,
-                'total_customers' => $totalCustomers,
-                'total_revenue' => (float) $totalRevenue,
-                'expected_arrivals_today' => $expectedArrivalsToday,
-                'expected_departures_today' => $expectedDeparturesToday,
-                'currently_checked_in' => $currentlyCheckedIn,
-                'room_statuses' => $roomStatuses,
-                'status_breakdown' => [
-                    'pending_payment' => $pendingPayments,
-                    'confirmed' => $confirmedBookings,
-                    'checked_in' => $checkedInCount,
-                    'checked_out' => $checkedOutCount,
-                    'cancelled_or_expired' => $cancelledOrExpired,
-                ],
-                'revenue_trend' => $revenueTrend,
-                'recent_bookings' => $recentBookings,
-                'recent_payments' => $recentPayments,
-            ],
+            'data' => $data,
         ]);
     }
 

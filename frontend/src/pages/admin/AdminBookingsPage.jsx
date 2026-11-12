@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import { formatRupiah, formatDate, formatDateTime, BOOKING_STATUS_CONFIG } from '../../utils/format';
 import {
@@ -18,10 +19,13 @@ import {
   Copy,
   Check,
   XCircle,
+  Shield,
+  Key,
 } from 'lucide-react';
 
 export default function AdminBookingsPage() {
   const toast = useToast();
+  const { isSuperAdmin } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
@@ -35,6 +39,7 @@ export default function AdminBookingsPage() {
   const [checkInModalOpen, setCheckInModalOpen] = useState(false);
   const [selectedBookingForCheckIn, setSelectedBookingForCheckIn] = useState(null);
   const [availableRooms, setAvailableRooms] = useState([]);
+  const [allRoomsOfType, setAllRoomsOfType] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [checkingIn, setCheckingIn] = useState(false);
 
@@ -43,10 +48,11 @@ export default function AdminBookingsPage() {
   const [selectedBookingForCheckOut, setSelectedBookingForCheckOut] = useState(null);
   const [checkingOut, setCheckingOut] = useState(false);
 
-  // Cancel Modal State
+  // Cancel Modal State (with Super Admin Key)
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [selectedBookingForCancel, setSelectedBookingForCancel] = useState(null);
-  const [cancelReason, setCancelReason] = useState('Pembatalan oleh Front Desk');
+  const [cancelReason, setCancelReason] = useState('Permintaan pembatalan langsung oleh tamu');
+  const [cancellationKeyInput, setCancellationKeyInput] = useState('');
   const [cancelling, setCancelling] = useState(false);
 
   // Detail Modal State
@@ -94,13 +100,18 @@ export default function AdminBookingsPage() {
   const openCheckInModal = async (booking) => {
     setSelectedBookingForCheckIn(booking);
     setSelectedRoomId('');
+    setAvailableRooms([]);
+    setAllRoomsOfType([]);
     setCheckInModalOpen(true);
     try {
       const res = await adminService.getAvailableRoomsForBooking(booking.id);
-      const rooms = res.data?.available_rooms || [];
-      setAvailableRooms(rooms);
-      if (rooms.length > 0) {
-        setSelectedRoomId(rooms[0].id);
+      const payload = res.data || res;
+      const readyRooms = Array.isArray(payload) ? payload : (payload.rooms || payload.available_rooms || []);
+      const allRooms = Array.isArray(payload) ? payload : (payload.all_rooms || readyRooms);
+      setAvailableRooms(readyRooms);
+      setAllRoomsOfType(allRooms);
+      if (readyRooms.length > 0) {
+        setSelectedRoomId(readyRooms[0].id);
       }
     } catch (err) {
       toast.error('Gagal memuat kamar yang tersedia.');
@@ -150,6 +161,39 @@ export default function AdminBookingsPage() {
       toast.error(err.response?.data?.message || 'Gagal melakukan check-out.');
     } finally {
       setCheckingOut(false);
+    }
+  };
+
+  // Open Cancel Modal
+  const openCancelModal = (booking) => {
+    setSelectedBookingForCancel(booking);
+    setCancelReason('Permintaan pembatalan langsung oleh tamu');
+    setCancellationKeyInput('');
+    setCancelModalOpen(true);
+  };
+
+  // Submit Cancel with Super Admin Key
+  const handleConfirmCancelWithKey = async (e) => {
+    e.preventDefault();
+    if (!cancellationKeyInput.trim()) {
+      toast.error('Key Konfirmasi Pembatalan Super Admin wajib diisi.');
+      return;
+    }
+    setCancelling(true);
+    try {
+      const res = await adminService.cancelBooking(selectedBookingForCancel.id, {
+        cancellation_key: cancellationKeyInput.trim(),
+        reason: cancelReason,
+      });
+      // The message also tells when a refund was recorded for a paid booking
+      toast.success(res.message || `Reservasi ${selectedBookingForCancel.booking_code} berhasil dibatalkan.`);
+      setCancelModalOpen(false);
+      setSelectedBookingForCancel(null);
+      fetchBookings();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Gagal membatalkan reservasi. Periksa kembali Key Otorisasi Super Admin.');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -302,9 +346,9 @@ export default function AdminBookingsPage() {
                       </td>
 
                       <td className="px-6 py-4">
-                        {b.room ? (
+                        {(b.assigned_room || b.room) ? (
                           <span className="font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
-                            #{b.room.room_number} (Lt. {b.room.floor})
+                            #{(b.assigned_room || b.room).room_number} (Lt. {(b.assigned_room || b.room).floor})
                           </span>
                         ) : (
                           <span className="text-[11px] text-slate-400 italic">Belum dialokasikan</span>
@@ -313,6 +357,17 @@ export default function AdminBookingsPage() {
 
                       <td className="px-6 py-4">
                         <span className="font-black text-slate-900">{formatRupiah(b.total_amount)}</span>
+                        <div className="mt-1">
+                          {b.payment_method === 'cash' ? (
+                            <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              💵 Bayar di Tempat
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                              💳 Midtrans
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-6 py-4">
@@ -343,6 +398,19 @@ export default function AdminBookingsPage() {
                           >
                             <LogOut className="w-3.5 h-3.5" />
                             <span>Check-Out</span>
+                          </button>
+                        )}
+
+                        {/* Cancel Booking Button (super admin only, requires the cancellation key) */}
+                        {isSuperAdmin && b.status !== 'CANCELLED' && b.status !== 'CHECKED_OUT' && (
+                          <button
+                            type="button"
+                            onClick={() => openCancelModal(b)}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-[11px] shadow-sm transition"
+                            title="Batalkan Reservasi dengan Key Otorisasi Super Admin"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Batalkan</span>
                           </button>
                         )}
 
@@ -428,30 +496,68 @@ export default function AdminBookingsPage() {
                   {formatDate(selectedBookingForCheckIn.check_in_date)} — {formatDate(selectedBookingForCheckIn.check_out_date)}
                 </span>
               </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200">
+                <span className="text-slate-500">Metode & Tagihan:</span>
+                <span className="font-bold text-slate-900">
+                  {selectedBookingForCheckIn.payment_method === 'cash' ? '💵 Bayar di Tempat' : '💳 Midtrans Online'} — {formatRupiah(selectedBookingForCheckIn.total_amount)}
+                </span>
+              </div>
             </div>
+
+            {selectedBookingForCheckIn.payment_method === 'cash' && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start space-x-2">
+                <span className="text-base leading-none">⚠️</span>
+                <div>
+                  <p className="font-bold">Tagihan Bayar di Tempat (Front Desk):</p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    Pastikan menerima pembayaran sebesar <strong>{formatRupiah(selectedBookingForCheckIn.total_amount)}</strong> dari tamu sebelum menyerahkan kunci kamar. Status pembayaran akan otomatis ditandai <strong>LUNAS</strong> setelah tombol konfirmasi check-in ditekan.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleConfirmCheckIn} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                  Pilih Unit Kamar Fisik yang Siap (Ready Clean) *
+                <label className="block text-xs font-bold text-slate-800 mb-1.5 flex justify-between">
+                  <span>Pilih Unit Kamar Fisik (Status: Ready Clean) *</span>
+                  <span className="text-[11px] text-emerald-600 font-semibold">
+                    {availableRooms.length} kamar ready
+                  </span>
                 </label>
+
                 {availableRooms.length === 0 ? (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
-                    Tidak ada unit kamar fisik yang berstatus Tersedia (Available) untuk tipe ini saat ini. Silakan periksa modul Inventaris Kamar.
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+                    <p className="font-bold">Tidak ada unit kamar yang berstatus Ready (Tersedia).</p>
+                    <p className="text-[11px] text-rose-700">
+                      Semua unit kamar tipe ini sedang berstatus <strong>Terisi (Occupied)</strong> atau <strong>Sedang Dibersihkan (Cleaning)</strong>. Silakan periksa dan perbarui status kebersihan kamar di menu Inventaris Kamar terlebih dahulu.
+                    </p>
                   </div>
                 ) : (
-                  <select
-                    value={selectedRoomId}
-                    onChange={(e) => setSelectedRoomId(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    required
-                  >
-                    {availableRooms.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        Unit Kamar #{r.room_number} — Lantai {r.floor} {r.notes ? `(${r.notes})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      value={selectedRoomId}
+                      onChange={(e) => setSelectedRoomId(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      required
+                    >
+                      {availableRooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          Unit Kamar #{r.room_number} — Lantai {r.floor} (Siap Pakai / Ready Clean)
+                        </option>
+                      ))}
+                    </select>
+
+                    <p className="text-[11px] text-slate-500 mt-1.5 flex items-center space-x-1">
+                      <span>ℹ️</span>
+                      <span>Unit kamar yang dipilih akan otomatis berubah statusnya menjadi <strong>Terisi (Occupied)</strong>.</span>
+                    </p>
+                  </>
+                )}
+
+                {allRoomsOfType.length > availableRooms.length && (
+                  <div className="mt-2 p-2.5 bg-slate-100 rounded-xl text-[11px] text-slate-600">
+                    Total unit tipe ini: {allRoomsOfType.length} kamar ({allRoomsOfType.length - availableRooms.length} kamar sedang terisi / dalam pembersihan).
+                  </div>
                 )}
               </div>
 
@@ -484,7 +590,7 @@ export default function AdminBookingsPage() {
         loading={checkingOut}
         type="warning"
         title="Konfirmasi Check-Out Tamu"
-        message={`Tamu ${selectedBookingForCheckOut?.customer_name} akan check-out dari Kamar #${selectedBookingForCheckOut?.room?.room_number || ''}. Status unit kamar akan otomatis dialihkan ke "Pembersihan (Cleaning)" untuk tim housekeeping.`}
+        message={`Tamu ${selectedBookingForCheckOut?.customer_name} akan check-out dari Kamar #${(selectedBookingForCheckOut?.assigned_room || selectedBookingForCheckOut?.room)?.room_number || ''}. Status unit fisik kamar akan langsung otomatis dialihkan menjadi "Pembersihan (Cleaning)" agar staf housekeeping dapat segera membersihkannya.`}
         confirmText="Check-Out Tamu Sekarang"
         cancelText="Batal"
       />
@@ -564,6 +670,18 @@ export default function AdminBookingsPage() {
                 </div>
               )}
 
+              {/* Discount Promo */}
+              {Number(viewingBooking.discount_amount || 0) > 0 && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200/80 rounded-xl flex justify-between items-center text-xs">
+                  <span className="font-bold text-emerald-900">
+                    Diskon Kupon Promo ({viewingBooking.discount_code}):
+                  </span>
+                  <span className="font-black text-emerald-700">
+                    -{formatRupiah(viewingBooking.discount_amount)}
+                  </span>
+                </div>
+              )}
+
               <div className="p-4 bg-amber-50/50 border border-amber-200/60 rounded-2xl flex justify-between items-center">
                 <span className="font-black text-slate-900">Total Pembayaran:</span>
                 <span className="text-base font-black text-amber-800">{formatRupiah(viewingBooking.total_amount)}</span>
@@ -578,6 +696,132 @@ export default function AdminBookingsPage() {
                 Tutup
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancellation Modal with Super Admin Authorization Key */}
+      {cancelModalOpen && selectedBookingForCancel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-5">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                  <Shield className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    Otorisasi Pembatalan Reservasi
+                  </h3>
+                  <span className="text-[10px] text-rose-600 font-mono font-bold block">
+                    Memerlukan Key Super Admin
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setCancelModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Booking Info Preview */}
+            <div className="p-4 bg-slate-50 rounded-2xl text-xs space-y-1.5 border border-slate-100">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Kode Booking:</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {selectedBookingForCancel.booking_code}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nama Tamu:</span>
+                <span className="font-bold text-slate-900">
+                  {selectedBookingForCancel.customer_name}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tipe Suite:</span>
+                <span className="font-bold text-slate-900">
+                  {selectedBookingForCancel.room_type?.name || selectedBookingForCancel.service_name}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Total Biaya:</span>
+                <span className="font-black text-amber-700">
+                  {formatRupiah(selectedBookingForCancel.total_amount)}
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmCancelWithKey} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Alasan Pembatalan *
+                </label>
+                <select
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-amber-500 focus:outline-none font-semibold mb-2"
+                >
+                  <option value="Permintaan pembatalan langsung oleh tamu">Permintaan pembatalan langsung oleh tamu</option>
+                  <option value="Reschedule / Perubahan tanggal liburan">Reschedule / Perubahan tanggal liburan</option>
+                  <option value="Kendala penerbangan / transportasi tamu">Kendala penerbangan / transportasi tamu</option>
+                  <option value="Pembatalan oleh Front Desk / Manajemen Hotel">Pembatalan oleh Front Desk / Manajemen Hotel</option>
+                  <option value="Lainnya">Alasan Lainnya</option>
+                </select>
+                {cancelReason === 'Lainnya' && (
+                  <input
+                    type="text"
+                    placeholder="Tuliskan alasan pembatalan..."
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    required
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1 flex items-center justify-between">
+                  <span className="flex items-center space-x-1">
+                    <Key className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Key Konfirmasi Super Admin *</span>
+                  </span>
+                  <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                    Wajib Otorisasi
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={cancellationKeyInput}
+                  onChange={(e) => setCancellationKeyInput(e.target.value)}
+                  placeholder="Contoh: ROYAL-CANCEL-8888"
+                  className="w-full text-xs p-3 rounded-xl border border-amber-300 bg-amber-50/40 focus:ring-2 focus:ring-amber-500 focus:outline-none font-mono font-bold tracking-wider text-slate-900 placeholder:text-slate-400"
+                  required
+                />
+                <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
+                  Key ini hanya dapat digenerate dan dilihat melalui profil <strong>Super Admin / General Manager</strong> (Tombol <em>Key Otorisasi Batal</em> di navbar atas).
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setCancelModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Kembali
+                </button>
+                <button
+                  type="submit"
+                  disabled={cancelling}
+                  className="px-5 py-2.5 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-md transition disabled:opacity-50 flex items-center space-x-1.5"
+                >
+                  <XCircle className="w-4 h-4" />
+                  <span>{cancelling ? 'Memverifikasi...' : 'Verifikasi & Batalkan'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

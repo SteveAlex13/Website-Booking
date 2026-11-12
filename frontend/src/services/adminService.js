@@ -88,6 +88,18 @@ export const adminService = {
     return await api.post(`/admin/bookings/${bookingId}/check-out`);
   },
 
+  async cancelBooking(bookingId, { cancellation_key, reason }) {
+    return await api.post(`/admin/bookings/${bookingId}/cancel`, { cancellation_key, reason });
+  },
+
+  async getCancellationKey() {
+    return await api.get('/user/cancellation-key');
+  },
+
+  async generateCancellationKey() {
+    return await api.post('/user/generate-cancellation-key');
+  },
+
   // Extra Services (Add-ons: Breakfast, Airport Pickup, etc.)
   async getExtraServices() {
     return await api.get('/extra-services');
@@ -125,5 +137,48 @@ export const adminService = {
 
   async getPayments(params = {}) {
     return await api.get('/admin/payments', { params });
+  },
+
+  // Refunds (super admin)
+  async processRefund(refundId) {
+    return await api.post(`/admin/refunds/${refundId}/process`);
+  },
+
+  // User management (super admin)
+  async getUsers(params = {}) {
+    return await api.get('/admin/users', { params });
+  },
+
+  async createUser(data) {
+    return await api.post('/admin/users', data);
+  },
+
+  async updateUser(id, data) {
+    return await api.put(`/admin/users/${id}`, data);
+  },
+
+  async toggleUserActive(id) {
+    return await api.patch(`/admin/users/${id}/toggle-active`);
+  },
+
+  // Discount Coupons Management
+  async getCoupons(params = {}) {
+    return await api.get('/admin/coupons', { params });
+  },
+
+  async createCoupon(data) {
+    return await api.post('/admin/coupons', data);
+  },
+
+  async updateCoupon(id, data) {
+    return await api.put(`/admin/coupons/${id}`, data);
+  },
+
+  async toggleCouponStatus(id) {
+    return await api.patch(`/admin/coupons/${id}/toggle`);
+  },
+
+  async deleteCoupon(id) {
+    return await api.delete(`/admin/coupons/${id}`);
   },
 };

@@ -16,7 +16,8 @@ class PaymentService
 {
     public function __construct(
         protected MidtransService $midtransService,
-        protected HotelBookingService $bookingService
+        protected HotelBookingService $bookingService,
+        protected RoomAvailabilityService $availabilityService
     ) {}
 
     /**
@@ -155,28 +156,71 @@ class PaymentService
             $lockedPayment->fraud_status = $fraudStatus;
             $lockedPayment->provider_response = $payload;
 
-            // Mapping Midtrans status according to Section 8.5
+            // Mapping Midtrans status according to Section 8.5 & Section 7
             if ($transactionStatus === 'settlement' || ($transactionStatus === 'capture' && $fraudStatus === 'accept')) {
-                // Success / Paid
-                if ($lockedPayment->status !== Payment::STATUS_PAID) {
-                    $lockedPayment->status = Payment::STATUS_PAID;
-                    $lockedPayment->paid_at = Carbon::now();
-                    $lockedPayment->save();
+                // Success / Paid. Ignore repeated notifications (and status syncs) for a payment that is
+                // already paid or already in the refund flow, or a cancelled booking would be revived.
+                $alreadyHandled = [
+                    Payment::STATUS_PAID,
+                    Payment::STATUS_PAID_NO_SLOT,
+                    Payment::STATUS_REFUND_PENDING,
+                    Payment::STATUS_REFUNDED,
+                    Payment::STATUS_PARTIALLY_REFUNDED,
+                ];
+                if (! in_array($lockedPayment->status, $alreadyHandled, true)) {
+                    $isHoldOverdue = ($booking->status === Booking::STATUS_EXPIRED) ||
+                        ($booking->expires_at && $booking->expires_at->lte(Carbon::now()) && $booking->status === Booking::STATUS_PENDING_PAYMENT);
 
-                    // Confirm Booking
-                    if ($booking->status !== Booking::STATUS_CONFIRMED) {
+                    $hasAvailableSlot = true;
+                    if ($isHoldOverdue) {
+                        $roomType = $booking->roomType ?? \App\Models\RoomType::find($booking->room_type_id);
+                        $availability = $this->availabilityService->checkRoomTypeAvailability(
+                            $roomType,
+                            Carbon::parse($booking->check_in_date),
+                            Carbon::parse($booking->check_out_date)
+                        );
+                        $hasAvailableSlot = $availability['is_available'] && $availability['available_rooms_count'] > 0;
+                    }
+
+                    if ($hasAvailableSlot) {
+                        $lockedPayment->status = Payment::STATUS_PAID;
+                        $lockedPayment->paid_at = Carbon::now();
+                        $lockedPayment->save();
+
+                        // Confirm Booking
+                        if ($booking->status !== Booking::STATUS_CONFIRMED) {
+                            $oldStatus = $booking->status;
+                            $booking->status = Booking::STATUS_CONFIRMED;
+                            $booking->confirmed_at = Carbon::now();
+                            $booking->save();
+
+                            BookingStatusHistory::create([
+                                'booking_id' => $booking->id,
+                                'old_status' => $oldStatus,
+                                'new_status' => Booking::STATUS_CONFIRMED,
+                                'changed_by' => null,
+                                'note' => "Pembayaran berhasil dikonfirmasi via Midtrans ({$paymentType}).",
+                            ]);
+                        }
+                    } else {
+                        // Section 7: Payment arrived after hold expired and room was taken by another customer -> Mark PAID_NO_SLOT for refund
+                        $lockedPayment->status = Payment::STATUS_PAID_NO_SLOT;
+                        $lockedPayment->paid_at = Carbon::now();
+                        $lockedPayment->save();
+
                         $oldStatus = $booking->status;
-                        $booking->status = Booking::STATUS_CONFIRMED;
-                        $booking->confirmed_at = Carbon::now();
+                        $booking->status = Booking::STATUS_PAID_NO_SLOT;
                         $booking->save();
 
                         BookingStatusHistory::create([
                             'booking_id' => $booking->id,
                             'old_status' => $oldStatus,
-                            'new_status' => Booking::STATUS_CONFIRMED,
+                            'new_status' => Booking::STATUS_PAID_NO_SLOT,
                             'changed_by' => null,
-                            'note' => "Pembayaran berhasil dikonfirmasi via Midtrans ({$paymentType}).",
+                            'note' => "Pembayaran diterima setelah batas hold kedaluwarsa dan kamar telah terisi penuh oleh tamu lain. Ditandai PAID_NO_SLOT untuk pengembalian dana (refund).",
                         ]);
+
+                        Log::warning("PAID_NO_SLOT: Booking {$booking->booking_code} (Order: {$lockedPayment->order_id}) paid after hold expired and room was taken. Ready for refund.");
                     }
                 }
             } elseif ($transactionStatus === 'pending') {
@@ -203,6 +247,11 @@ class PaymentService
             } elseif ($transactionStatus === 'refund') {
                 $lockedPayment->status = Payment::STATUS_REFUNDED;
                 $lockedPayment->save();
+
+                // The refund is done at Midtrans, so close any refund still waiting in our list
+                \App\Models\Refund::where('payment_id', $lockedPayment->id)
+                    ->where('status', \App\Models\Refund::STATUS_PENDING)
+                    ->update(['status' => \App\Models\Refund::STATUS_PROCESSED, 'processed_at' => Carbon::now()]);
             } elseif ($transactionStatus === 'partial_refund') {
                 $lockedPayment->status = Payment::STATUS_PARTIALLY_REFUNDED;
                 $lockedPayment->save();
@@ -221,6 +270,11 @@ class PaymentService
      */
     public function checkStatus(Payment $payment): Payment
     {
+        // Cash payment does not sync with Midtrans API
+        if ($payment->payment_type === 'cash' || str_starts_with((string) $payment->order_id, 'CASH-')) {
+            return $payment;
+        }
+
         $statusObj = $this->midtransService->getTransactionStatus($payment->order_id);
         if ($statusObj) {
             $payload = (array) $statusObj;

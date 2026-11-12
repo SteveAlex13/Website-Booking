@@ -16,7 +16,12 @@ class RoomAvailabilityService
     public function checkRoomTypeAvailability(RoomType $roomType, Carbon $checkIn, Carbon $checkOut): array
     {
         $nights = $checkIn->diffInDays($checkOut) ?: 1;
-        $totalRooms = $roomType->total_rooms;
+
+        // Rooms under maintenance cannot be sold, so they do not count as stock.
+        $maintenanceRooms = Room::where('room_type_id', $roomType->id)
+            ->where('status', 'maintenance')
+            ->count();
+        $totalRooms = max(0, $roomType->total_rooms - $maintenanceRooms);
 
         // Find all active bookings that overlap with this date range
         $overlappingBookings = Booking::where('room_type_id', $roomType->id)

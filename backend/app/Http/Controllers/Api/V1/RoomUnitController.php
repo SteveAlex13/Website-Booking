@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking;
 use App\Models\Room;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -68,6 +69,17 @@ class RoomUnitController extends Controller
             'status' => 'required|in:available,occupied,cleaning,maintenance',
         ]);
 
+        // A room with a checked-in guest stays occupied until the guest checks out.
+        if ($validated['status'] !== 'occupied') {
+            $guest = $this->checkedInGuest($room);
+            if ($guest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Kamar No. {$room->room_number} sedang dihuni tamu (booking {$guest->booking_code}). Lakukan check-out terlebih dahulu.",
+                ], 422);
+            }
+        }
+
         $room->status = $validated['status'];
         $room->save();
 
@@ -84,12 +96,31 @@ class RoomUnitController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $room = Room::findOrFail($id);
+
+        $guest = $this->checkedInGuest($room);
+        if ($guest) {
+            return response()->json([
+                'success' => false,
+                'message' => "Kamar No. {$room->room_number} sedang dihuni tamu (booking {$guest->booking_code}) dan tidak bisa dihapus.",
+            ], 422);
+        }
+
         $room->delete();
 
         return response()->json([
             'success' => true,
             'message' => 'Unit kamar berhasil dihapus.',
         ]);
+    }
+
+    /**
+     * The booking of the guest who is staying in this room right now, if any.
+     */
+    private function checkedInGuest(Room $room): ?Booking
+    {
+        return Booking::where('assigned_room_id', $room->id)
+            ->where('status', Booking::STATUS_CHECKED_IN)
+            ->first();
     }
 }
 

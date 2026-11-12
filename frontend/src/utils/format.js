@@ -1,11 +1,27 @@
+// "2 Dewasa, 1 Anak" from a room type (API fields: max_adults, max_children)
+export function formatRoomCapacity(room) {
+  const adults = room?.max_adults ?? room?.max_occupancy;
+  const children = Number(room?.max_children) || 0;
+  if (!adults) return '-';
+  return children > 0 ? `${adults} Dewasa, ${children} Anak` : `${adults} Dewasa`;
+}
+
+// "38 m²" from a room type (API field: room_size_sqm)
+export function formatRoomSize(room) {
+  const size = room?.room_size_sqm ?? room?.size_sqm;
+  return size ? `${size} m²` : '-';
+}
+
 export function formatRupiah(amount) {
-  if (amount === undefined || amount === null) return 'Rp 0';
+  if (amount === undefined || amount === null || amount === '') return 'Rp 0';
+  const num = Number(amount);
+  if (Number.isNaN(num)) return 'Rp 0';
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(num);
 }
 
 export function formatDate(dateString) {
@@ -88,6 +104,12 @@ export const BOOKING_STATUS_CONFIG = {
     text: 'text-gray-600',
     border: 'border-gray-300',
   },
+  PAID_NO_SLOT: {
+    label: 'Kamar Penuh (Perlu Refund)',
+    bg: 'bg-orange-50',
+    text: 'text-orange-700',
+    border: 'border-orange-200',
+  },
 };
 
 export const PAYMENT_STATUS_CONFIG = {
@@ -97,4 +119,6 @@ export const PAYMENT_STATUS_CONFIG = {
   EXPIRED: { label: 'Kedaluwarsa', bg: 'bg-slate-100', text: 'text-slate-600' },
   CANCELLED: { label: 'Dibatalkan', bg: 'bg-rose-50', text: 'text-rose-700' },
   REFUNDED: { label: 'Refund', bg: 'bg-purple-50', text: 'text-purple-700' },
+  PAID_NO_SLOT: { label: 'Perlu Refund', bg: 'bg-orange-50', text: 'text-orange-700' },
+  REFUND_PENDING: { label: 'Menunggu Refund', bg: 'bg-orange-50', text: 'text-orange-700' },
 };

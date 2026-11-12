@@ -19,6 +19,9 @@ class Payment extends Model
     public const STATUS_CANCELLED = 'CANCELLED';
     public const STATUS_REFUNDED = 'REFUNDED';
     public const STATUS_PARTIALLY_REFUNDED = 'PARTIALLY_REFUNDED';
+    public const STATUS_PAID_NO_SLOT = 'PAID_NO_SLOT';
+    // Booking was cancelled after payment; a Refund row waits for the super admin to process it
+    public const STATUS_REFUND_PENDING = 'REFUND_PENDING';
 
     protected $fillable = [
         'booking_id',
