@@ -25,3 +25,7 @@ CLAUDE.local.md
 # OS files
 .DS_Store
 Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
