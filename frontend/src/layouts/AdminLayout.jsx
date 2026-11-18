@@ -24,6 +24,7 @@ import {
   Check,
   AlertTriangle,
   TicketPercent,
+  UserCog,
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -98,17 +99,21 @@ export default function AdminLayout() {
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
+  // Front desk (role "admin") only sees the items without superAdminOnly.
   const navItems = [
     { to: '/admin/dashboard', label: 'Dashboard Hotel', icon: LayoutDashboard, end: true },
     { to: '/admin/bookings', label: 'Reservasi & Front Desk', icon: BookOpenCheck },
     { to: '/admin/rooms', label: 'Unit Kamar Fisik', icon: DoorOpen },
-    { to: '/admin/services', label: 'Tipe Kamar & Suite', icon: BedDouble },
-    { to: '/admin/categories', label: 'Layanan Tambahan (Add-on)', icon: Coffee },
-    { to: '/admin/coupons', label: 'Kupon & Promo Diskon', icon: TicketPercent },
+    { to: '/admin/services', label: 'Tipe Kamar & Suite', icon: BedDouble, superAdminOnly: true },
+    { to: '/admin/categories', label: 'Layanan Tambahan (Add-on)', icon: Coffee, superAdminOnly: true },
+    { to: '/admin/coupons', label: 'Kupon & Promo Diskon', icon: TicketPercent, superAdminOnly: true },
     { to: '/admin/customers', label: 'Buku Tamu', icon: Users },
-    { to: '/admin/payments', label: 'Transaksi Midtrans', icon: CreditCard },
-    { to: '/admin/reports', label: 'Laporan Finansial', icon: BarChart3 },
+    { to: '/admin/users', label: 'Kelola User', icon: UserCog, superAdminOnly: true },
+    { to: '/admin/payments', label: 'Transaksi Midtrans', icon: CreditCard, superAdminOnly: true },
+    { to: '/admin/reports', label: 'Laporan Finansial', icon: BarChart3, superAdminOnly: true },
   ];
+  const visibleNavItems = navItems.filter((item) => !item.superAdminOnly || isSuperAdmin);
+  const roleLabel = isSuperAdmin ? 'Super Admin' : 'Front Desk';
 
   return (
     <div className="min-h-screen flex bg-slate-100 text-slate-800">
@@ -152,7 +157,7 @@ export default function AdminLayout() {
           <div className="px-3 pb-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
             Menu Operasional
           </div>
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
@@ -214,7 +219,7 @@ export default function AdminLayout() {
           <div className="flex items-center justify-between pt-3 border-t border-slate-900 px-1">
             <div className="truncate pr-2">
               <span className="text-xs font-bold text-white block truncate">{user?.name}</span>
-              <span className="text-[10px] text-amber-400 font-mono">{user?.role}</span>
+              <span className="text-[10px] text-amber-400 font-mono">{roleLabel}</span>
             </div>
             <button
               onClick={handleLogout}

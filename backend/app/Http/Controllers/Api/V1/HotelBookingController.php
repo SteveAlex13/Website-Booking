@@ -137,6 +137,14 @@ class HotelBookingController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Only guests (role customer) can book a room. Front desk and super admin cannot.
+        if (! $request->user()->isCustomer()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya akun tamu (customer) yang dapat memesan kamar.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'room_type_id' => 'required|exists:room_types,id',
             'check_in_date' => 'required|date|after_or_equal:today',
@@ -226,14 +234,16 @@ class HotelBookingController extends Controller
     {
         $booking = Booking::findOrFail($id);
 
-        if (! $request->user()->isAdmin() && $booking->user_id !== $request->user()->id) {
+        // Only the guest who owns the booking can use this route. Staff cancel through
+        // POST /admin/bookings/{id}/cancel, which needs the super admin cancellation key.
+        if ($booking->user_id !== $request->user()->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Akses ditolak.',
             ], 403);
         }
 
-        if ($booking->status !== Booking::STATUS_PENDING_PAYMENT && ! $request->user()->isAdmin()) {
+        if ($booking->status !== Booking::STATUS_PENDING_PAYMENT) {
             return response()->json([
                 'success' => false,
                 'message' => 'Hanya booking yang belum dibayar yang dapat dibatalkan mandiri.',
@@ -389,10 +399,12 @@ class HotelBookingController extends Controller
 
         $booking = Booking::findOrFail($id);
 
-        if (in_array($booking->status, [Booking::STATUS_CANCELLED, Booking::STATUS_CHECKED_OUT])) {
+        if (in_array($booking->status, [Booking::STATUS_CANCELLED, Booking::STATUS_CHECKED_IN, Booking::STATUS_CHECKED_OUT])) {
             return response()->json([
                 'success' => false,
-                'message' => "Reservasi dengan status {$booking->status} tidak dapat dibatalkan lagi.",
+                'message' => $booking->status === Booking::STATUS_CHECKED_IN
+                    ? 'Tamu sedang menginap, reservasi tidak bisa dibatalkan. Lakukan check-out terlebih dahulu.'
+                    : "Reservasi dengan status {$booking->status} tidak dapat dibatalkan lagi.",
             ], 422);
         }
 
@@ -403,10 +415,23 @@ class HotelBookingController extends Controller
                 $validated['reason'] . " (Diotorisasi dengan Key Super Admin [{$superAdmin->name}])"
             );
 
+            // A paid booking gets a pending refund that the super admin processes on the Payments page
+            $refund = \App\Models\Refund::whereHas('payment', fn ($q) => $q->where('booking_id', $booking->id))
+                ->where('status', \App\Models\Refund::STATUS_PENDING)
+                ->latest('id')
+                ->first();
+
+            $message = "Reservasi {$booking->booking_code} berhasil dibatalkan.";
+            if ($refund) {
+                $message .= ' Refund Rp ' . number_format((float) $refund->amount, 0, ',', '.')
+                    . ' dicatat dan menunggu diproses di halaman Pembayaran.';
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => "Reservasi {$booking->booking_code} berhasil dibatalkan.",
+                'message' => $message,
                 'data' => $updated,
+                'refund' => $refund,
             ]);
         } catch (Exception $e) {
             return response()->json([

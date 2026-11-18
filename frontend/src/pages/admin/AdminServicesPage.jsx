@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../contexts/ToastContext';
 import ConfirmModal from '../../components/common/ConfirmModal';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, formatRoomSize } from '../../utils/format';
+import RoomImage from '../../components/common/RoomImage';
 import {
   Plus,
   Edit2,
@@ -216,14 +217,10 @@ export default function AdminServicesPage() {
             >
               <div>
                 <div className="relative h-44 bg-slate-900 overflow-hidden">
-                  <img
-                    src={room.image_url}
+                  <RoomImage
+                    src={room.image_url || room.featured_image}
                     alt={room.name}
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.src =
-                        'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
-                    }}
                   />
                   <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-white flex items-center space-x-1">
                     <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
@@ -249,7 +246,7 @@ export default function AdminServicesPage() {
                     </button>
                   </div>
                   <div className="absolute bottom-3 left-3 bg-amber-500/90 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                    {room.size_sqm} m²
+                    {formatRoomSize(room)}
                   </div>
                 </div>
 

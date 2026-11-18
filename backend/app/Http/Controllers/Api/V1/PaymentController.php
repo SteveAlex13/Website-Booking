@@ -27,8 +27,8 @@ class PaymentController extends Controller
 
         $booking = Booking::with('user')->findOrFail($validated['booking_id']);
 
-        // Only owner or admin can initiate payment
-        if (! $request->user()->isAdmin() && $booking->user_id !== $request->user()->id) {
+        // Only the guest who owns the booking can start a payment (staff cannot pay for guests)
+        if ($booking->user_id !== $request->user()->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Akses ditolak.',
@@ -40,7 +40,7 @@ class PaymentController extends Controller
             $payment = Payment::where('booking_id', $booking->id)->latest()->first();
             return response()->json([
                 'success' => true,
-                'message' => 'Metode bayar tunai di hotel (Front Desk).',
+                'message' => 'Metode bayar di tempat (Front Desk).',
                 'data' => [
                     'payment_id' => $payment?->id,
                     'order_id' => $payment?->order_id,
@@ -122,7 +122,7 @@ class PaymentController extends Controller
      */
     public function adminIndex(Request $request): JsonResponse
     {
-        $query = Payment::with(['booking.user', 'booking.roomType', 'booking.assignedRoom']);
+        $query = Payment::with(['booking.user', 'booking.roomType', 'booking.assignedRoom', 'refunds']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);

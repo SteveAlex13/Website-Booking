@@ -183,7 +183,7 @@ export default function PaymentResultPage() {
               : isExpired
               ? 'Hold kamar telah kedaluwarsa dan kamar telah dilepaskan kembali. Tidak ada dana yang ditarik.'
               : isCash
-              ? 'Pilihan Pembayaran: Bayar Tunai di Hotel. Silakan lakukan pelunasan di meja Front Desk saat Check-In.'
+              ? 'Pilihan Pembayaran: Bayar di Tempat. Silakan lakukan pelunasan di meja Front Desk saat Check-In.'
               : isPaid
               ? 'Terima kasih, reservasi kamar suite Anda telah resmi dikonfirmasi dan diamankan.'
               : 'Kamar ditahan sementara untuk Anda. Silakan selesaikan pembayaran sebelum batas waktu berakhir.'}
@@ -223,10 +223,10 @@ export default function PaymentResultPage() {
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-left flex items-start space-x-3 text-xs text-emerald-900">
             <Hotel className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold text-emerald-950">Petunjuk Pembayaran Tunai (Front Desk):</p>
+              <p className="font-bold text-emerald-950">Petunjuk Bayar di Tempat (Front Desk):</p>
               <ul className="list-disc list-inside mt-1 space-y-1 text-[11px] text-emerald-800">
                 <li>Tunjukkan Kode Reservasi <strong>{booking?.booking_code}</strong> ke staf resepsionis saat kedatangan.</li>
-                <li>Siapkan uang tunai pas sebesar <strong>{formatRupiah(payment.gross_amount)}</strong> saat proses Check-In.</li>
+                <li>Siapkan pembayaran pas sebesar <strong>{formatRupiah(payment.gross_amount)}</strong> saat proses Check-In.</li>
                 <li>Staf kami akan segera menyerahkan kartu kunci kamar dan struk bukti pembayaran lunas.</li>
               </ul>
             </div>
@@ -240,13 +240,13 @@ export default function PaymentResultPage() {
             <span className="font-mono font-bold text-slate-900">{booking?.booking_code}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">{isCash ? 'ID Referensi Cash:' : 'Order ID Midtrans:'}</span>
+            <span className="text-slate-500">{isCash ? 'ID Referensi Bayar di Tempat:' : 'Order ID Midtrans:'}</span>
             <span className="font-mono text-slate-700">{payment.order_id}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Metode Pembayaran:</span>
             <span className="font-bold text-slate-900">
-              {isCash ? '💵 Tunai di Hotel (Front Desk)' : `💳 Online Midtrans (${payment.payment_type?.toUpperCase() || 'QRIS/VA'})`}
+              {isCash ? '💵 Bayar di Tempat (Front Desk)' : `💳 Online Midtrans (${payment.payment_type?.toUpperCase() || 'QRIS/VA'})`}
             </span>
           </div>
           <div className="flex justify-between">

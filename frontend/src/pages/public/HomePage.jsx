@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { serviceService } from '../../services/serviceService';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, formatRoomCapacity, formatRoomSize } from '../../utils/format';
+import RoomImage from '../../components/common/RoomImage';
 import {
   Hotel,
   Calendar,
@@ -300,16 +301,12 @@ export default function HomePage() {
               >
                 {/* Image / Banner (Section 11: blur & label saat tidak tersedia) */}
                 <div className="room-photo-wrap relative h-56 bg-slate-900 overflow-hidden">
-                  <img
-                    src={room.image_url}
+                  <RoomImage
+                    src={room.image_url || room.featured_image}
                     alt={room.name}
                     className={`room-photo w-full h-full object-cover transition duration-500 ${
                       !isAvailable ? 'filter blur-[2px] opacity-75' : 'group-hover:scale-105'
                     }`}
-                    onError={(e) => {
-                      e.target.src =
-                        'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
-                    }}
                   />
 
                   {/* Section 11: Overlay Label Tidak Tersedia */}
@@ -326,7 +323,7 @@ export default function HomePage() {
                     <span>Luxury Suite</span>
                   </div>
                   <div className="absolute bottom-4 right-4 bg-amber-500/90 text-white text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-sm">
-                    {room.size_sqm} m²
+                    {formatRoomSize(room)}
                   </div>
                 </div>
 
@@ -352,7 +349,7 @@ export default function HomePage() {
                         🛏️ {room.bed_type}
                       </span>
                       <span className="bg-slate-100 px-2.5 py-1 rounded-lg font-medium">
-                        👥 Max {room.max_occupancy || room.max_adults} Tamu
+                        👥 Max {formatRoomCapacity(room)}
                       </span>
                     </div>
 

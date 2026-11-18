@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import {
   DoorOpen,
@@ -25,6 +26,7 @@ const STATUS_MAP = {
 
 export default function AdminRoomsPage() {
   const toast = useToast();
+  const { isSuperAdmin } = useAuth(); // front desk can change room status, only super admin adds or deletes rooms
   const [rooms, setRooms] = useState([]);
   const [roomTypes, setRoomTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -150,13 +152,15 @@ export default function AdminRoomsPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddOpen(true)}
-          className="inline-flex items-center space-x-2 px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-2xl shadow-lg shadow-amber-900/40 transition transform hover:-translate-y-0.5 text-sm self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Tambah Unit Kamar</span>
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setIsAddOpen(true)}
+            className="inline-flex items-center space-x-2 px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-2xl shadow-lg shadow-amber-900/40 transition transform hover:-translate-y-0.5 text-sm self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tambah Unit Kamar</span>
+          </button>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -272,16 +276,18 @@ export default function AdminRoomsPage() {
                     <span className="font-mono text-xl font-black text-slate-900 bg-slate-100 px-3 py-1 rounded-xl">
                       #{room.room_number}
                     </span>
-                    <button
-                      onClick={() => {
-                        setRoomToDelete(room);
-                        setDeleteModalOpen(true);
-                      }}
-                      className="p-1.5 text-slate-300 hover:text-rose-600 rounded-lg transition"
-                      title="Hapus Unit"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {isSuperAdmin && (
+                      <button
+                        onClick={() => {
+                          setRoomToDelete(room);
+                          setDeleteModalOpen(true);
+                        }}
+                        className="p-1.5 text-slate-300 hover:text-rose-600 rounded-lg transition"
+                        title="Hapus Unit"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
 
                   <h4 className="font-bold text-slate-900 text-sm">{room.room_type?.name}</h4>

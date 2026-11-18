@@ -165,8 +165,19 @@ class BookingEngineTest extends TestCase
             'total_adults' => 2,
         ]);
 
-        // 1. Attempt cancel with invalid key -> 403 Forbidden
-        $response = $this->actingAs($staffAdmin)
+        // 0. Front desk (role admin) cannot cancel at all, even with a valid key -> 403
+        $this->actingAs($staffAdmin)
+            ->postJson("/api/v1/admin/bookings/{$booking->id}/cancel", [
+                'cancellation_key' => 'TEST-SECRET-KEY-999',
+                'reason' => 'Guest requested cancel',
+            ])
+            ->assertStatus(403);
+
+        $booking->refresh();
+        $this->assertEquals(Booking::STATUS_PENDING_PAYMENT, $booking->status);
+
+        // 1. Super admin with an invalid key -> 403 Forbidden
+        $response = $this->actingAs($superAdmin)
             ->postJson("/api/v1/admin/bookings/{$booking->id}/cancel", [
                 'cancellation_key' => 'WRONG-KEY-000',
                 'reason' => 'Guest emergency',
@@ -178,8 +189,8 @@ class BookingEngineTest extends TestCase
         $booking->refresh();
         $this->assertEquals(Booking::STATUS_PENDING_PAYMENT, $booking->status);
 
-        // 2. Attempt cancel with valid Super Admin key -> 200 OK
-        $responseSuccess = $this->actingAs($staffAdmin)
+        // 2. Super admin with the valid key -> 200 OK
+        $responseSuccess = $this->actingAs($superAdmin)
             ->postJson("/api/v1/admin/bookings/{$booking->id}/cancel", [
                 'cancellation_key' => 'TEST-SECRET-KEY-999',
                 'reason' => 'Guest requested cancel',
@@ -245,8 +256,9 @@ class BookingEngineTest extends TestCase
     {
         $token = $this->customer->createToken('test')->plainTextToken;
 
-        $checkIn = Carbon::today()->addDays(1)->toDateString();
-        $checkOut = Carbon::today()->addDays(2)->toDateString();
+        // The guest arrives today, so the front desk is allowed to check them in
+        $checkIn = Carbon::today()->toDateString();
+        $checkOut = Carbon::today()->addDays(1)->toDateString();
 
         // 1. Create cash booking
         $bookingRes = $this->withHeader('Authorization', "Bearer {$token}")

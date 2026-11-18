@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { serviceService } from '../../services/serviceService';
-import { formatRupiah } from '../../utils/format';
+import { formatRupiah, formatRoomCapacity, formatRoomSize } from '../../utils/format';
+import RoomImage from '../../components/common/RoomImage';
 import {
   Calendar,
   Users,
@@ -234,18 +235,14 @@ export default function ServicesPage() {
               >
                 {/* Room Image (Section 11: blur & overlay label saat tidak tersedia) */}
                 <div className="room-photo-wrap lg:w-2/5 relative h-64 lg:h-auto bg-slate-900 overflow-hidden">
-                  <img
-                    src={room.image_url}
+                  <RoomImage
+                    src={room.image_url || room.featured_image}
                     alt={room.name}
                     className={`room-photo w-full h-full object-cover transition duration-500 ${
                       !isAvailable
                         ? 'filter blur-[2px] opacity-75'
                         : 'group-hover:scale-105'
                     }`}
-                    onError={(e) => {
-                      e.target.src =
-                        'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
-                    }}
                   />
 
                   {/* Section 11: Overlay Label Tidak Tersedia */}
@@ -262,7 +259,7 @@ export default function ServicesPage() {
                     <span>5-Star Comfort</span>
                   </div>
                   <div className="absolute bottom-4 left-4 bg-white/95 text-slate-900 text-xs font-bold px-3 py-1 rounded-full shadow">
-                    {room.size_sqm} m²
+                    {formatRoomSize(room)}
                   </div>
                 </div>
 
@@ -296,10 +293,10 @@ export default function ServicesPage() {
                         🛏️ {room.bed_type}
                       </span>
                       <span className="bg-slate-100 px-3 py-1.5 rounded-xl font-semibold">
-                        👥 Max {room.max_occupancy || room.max_adults} Tamu
+                        👥 Max {formatRoomCapacity(room)}
                       </span>
                       <span className="bg-slate-100 px-3 py-1.5 rounded-xl font-semibold">
-                        📐 {room.size_sqm} meter persegi
+                        📐 {formatRoomSize(room)}
                       </span>
                     </div>
 

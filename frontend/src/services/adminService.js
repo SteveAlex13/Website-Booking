@@ -139,6 +139,28 @@ export const adminService = {
     return await api.get('/admin/payments', { params });
   },
 
+  // Refunds (super admin)
+  async processRefund(refundId) {
+    return await api.post(`/admin/refunds/${refundId}/process`);
+  },
+
+  // User management (super admin)
+  async getUsers(params = {}) {
+    return await api.get('/admin/users', { params });
+  },
+
+  async createUser(data) {
+    return await api.post('/admin/users', data);
+  },
+
+  async updateUser(id, data) {
+    return await api.put(`/admin/users/${id}`, data);
+  },
+
+  async toggleUserActive(id) {
+    return await api.patch(`/admin/users/${id}/toggle-active`);
+  },
+
   // Discount Coupons Management
   async getCoupons(params = {}) {
     return await api.get('/admin/coupons', { params });

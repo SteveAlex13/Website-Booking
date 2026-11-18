@@ -5,7 +5,8 @@ import { serviceService } from '../../services/serviceService';
 import { bookingService } from '../../services/bookingService';
 import { paymentService } from '../../services/paymentService';
 import { useToast } from '../../contexts/ToastContext';
-import { formatRupiah, formatDate } from '../../utils/format';
+import { formatRupiah, formatDate, formatRoomCapacity, formatRoomSize } from '../../utils/format';
+import RoomImage from '../../components/common/RoomImage';
 import { loadSnapScript, openSnapModal } from '../../utils/midtrans';
 import {
   Calendar,
@@ -33,7 +34,8 @@ export default function BookingFlowPage() {
   const { serviceId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isCustomer } = useAuth();
+  const isStaff = isAuthenticated && !isCustomer; // front desk and super admin cannot book rooms
   const toast = useToast();
 
   const today = new Date().toISOString().split('T')[0];
@@ -113,6 +115,17 @@ export default function BookingFlowPage() {
     };
     fetchData();
   }, [serviceId]);
+
+  // Keep the guest counts inside what this room allows
+  useEffect(() => {
+    if (!roomType) return;
+    if (roomType.max_adults) {
+      setAdults((a) => Math.min(Math.max(a, 1), Number(roomType.max_adults)));
+    }
+    if (roomType.max_children !== undefined && roomType.max_children !== null) {
+      setChildren((c) => Math.min(c, Number(roomType.max_children)));
+    }
+  }, [roomType]);
 
   // Recalculate price when dates, extras, or applied coupon change
   useEffect(() => {
@@ -231,6 +244,11 @@ export default function BookingFlowPage() {
       return;
     }
 
+    if (isStaff) {
+      toast.error('Akun staf tidak dapat memesan kamar. Gunakan akun tamu (customer).');
+      return;
+    }
+
     if (checkIn >= checkOut) {
       toast.error('Tanggal check-out harus setelah tanggal check-in.');
       return;
@@ -273,7 +291,7 @@ export default function BookingFlowPage() {
           newBooking.payments?.[0]?.id ||
           newBooking.id;
 
-        toast.success(`Reservasi ${newBooking.booking_code} berhasil! Silakan bayar tunai saat Check-In.`);
+        toast.success(`Reservasi ${newBooking.booking_code} berhasil! Silakan bayar di tempat saat Check-In.`);
         navigate(`/payment-result/${cashPaymentId}`);
         return;
       }
@@ -360,7 +378,10 @@ export default function BookingFlowPage() {
   const basePricePerNight = Number(roomType?.base_price_per_night) || 0;
   const nights = Number(priceCalculation?.nights) || Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24))) || 1;
 
-  const roomCost = Number(priceCalculation?.room_cost?.total_room_amount ?? (basePricePerNight * nights)) || 0;
+  // The API returns the room cost as room_cost.total_amount (it already includes weekend prices)
+  const roomCost = Number(priceCalculation?.room_cost?.total_amount ?? (basePricePerNight * nights)) || 0;
+  const maxAdults = Number(roomType?.max_adults) || 4;
+  const maxChildren = Number(roomType?.max_children ?? 2);
   const extrasTotal = Number(priceCalculation?.extras_total ?? 0) || 0;
   const subtotal = Number(priceCalculation?.subtotal ?? (roomCost + extrasTotal)) || 0;
   const discountAmount = Number(priceCalculation?.discount_amount ?? appliedCoupon?.discount_amount ?? 0) || 0;
@@ -381,24 +402,37 @@ export default function BookingFlowPage() {
         </Link>
       </div>
 
+      {isStaff && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start space-x-3">
+          <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Akun staf tidak dapat memesan kamar.</p>
+            <p className="mt-0.5">
+              Hanya akun tamu (customer) yang bisa melakukan reservasi. Keluar dan masuk dengan akun tamu untuk memesan,
+              atau kembali ke{' '}
+              <Link to="/admin/dashboard" className="font-bold underline">
+                dashboard admin
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left 2 Cols: Booking Form & Add-ons */}
         <div className="lg:col-span-2 space-y-8">
           {/* Room Header Card (Section 11: blur & overlay label saat kamar tidak tersedia) */}
           <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row gap-6 items-center">
             <div className="relative w-full sm:w-44 h-36 rounded-2xl overflow-hidden bg-slate-900 shadow-sm shrink-0">
-              <img
-                src={roomType.image_url}
+              <RoomImage
+                src={roomType.image_url || roomType.featured_image}
                 alt={roomType.name}
                 className={`w-full h-full object-cover transition duration-300 ${
                   priceCalculation && !priceCalculation.is_available
                     ? 'filter blur-[2px] opacity-75'
                     : ''
                 }`}
-                onError={(e) => {
-                  e.target.src =
-                    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
-                }}
               />
               {priceCalculation && !priceCalculation.is_available && (
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-2 text-center">
@@ -422,10 +456,10 @@ export default function BookingFlowPage() {
                   🛏️ {roomType.bed_type}
                 </span>
                 <span className="bg-slate-100 px-3 py-1 rounded-lg font-semibold">
-                  👥 Max {roomType.max_occupancy} Tamu
+                  👥 Max {formatRoomCapacity(roomType)}
                 </span>
                 <span className="bg-slate-100 px-3 py-1 rounded-lg font-semibold">
-                  📐 {roomType.size_sqm} m²
+                  📐 {formatRoomSize(roomType)}
                 </span>
               </div>
             </div>
@@ -490,11 +524,13 @@ export default function BookingFlowPage() {
                     onChange={(e) => setAdults(Number(e.target.value))}
                     className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold cursor-pointer"
                   >
-                    <option value={1}>1 Orang</option>
-                    <option value={2}>2 Orang</option>
-                    <option value={3}>3 Orang</option>
-                    <option value={4}>4 Orang</option>
+                    {Array.from({ length: maxAdults }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {i + 1} Orang
+                      </option>
+                    ))}
                   </select>
+                  <p className="text-[10px] text-slate-400 mt-1">Maksimal {maxAdults} dewasa untuk kamar ini</p>
                 </div>
 
                 <div>
@@ -506,10 +542,15 @@ export default function BookingFlowPage() {
                     onChange={(e) => setChildren(Number(e.target.value))}
                     className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold cursor-pointer"
                   >
-                    <option value={0}>0 Anak</option>
-                    <option value={1}>1 Anak</option>
-                    <option value={2}>2 Anak</option>
+                    {Array.from({ length: maxChildren + 1 }, (_, i) => (
+                      <option key={i} value={i}>
+                        {i} Anak
+                      </option>
+                    ))}
                   </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {maxChildren > 0 ? `Maksimal ${maxChildren} anak untuk kamar ini` : 'Kamar ini tidak menerima anak-anak'}
+                  </p>
                 </div>
               </div>
 
@@ -948,13 +989,13 @@ export default function BookingFlowPage() {
                     </div>
                     <div>
                       <div className="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
-                        <span>Bayar Tunai di Hotel (Cash)</span>
+                        <span>Bayar di Tempat</span>
                         <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.2 rounded">
                           FRONT DESK
                         </span>
                       </div>
                       <div className="text-[10px] text-slate-500">
-                        Bayar tunai di meja resepsionis saat Check-In
+                        Bayar langsung di meja resepsionis saat Check-In
                       </div>
                     </div>
                   </div>
@@ -984,10 +1025,10 @@ export default function BookingFlowPage() {
               <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-[11px] text-emerald-900 space-y-1">
                 <div className="flex items-center space-x-1.5 font-bold">
                   <Banknote className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Bayar Tunai saat Check-In (Cash on Arrival)</span>
+                  <span>Bayar di Tempat saat Check-In</span>
                 </div>
                 <p className="text-[10px] text-emerald-800 leading-relaxed">
-                  Reservasi Anda akan langsung dikonfirmasi. Anda cukup menunjukkan Kode Booking dan membayar tunai di meja Front Desk saat tiba di resort.
+                  Reservasi Anda akan langsung dikonfirmasi. Anda cukup menunjukkan Kode Booking dan membayar langsung di meja Front Desk saat tiba di resort.
                 </p>
               </div>
             )}
@@ -996,7 +1037,7 @@ export default function BookingFlowPage() {
             <button
               type="submit"
               form="hotel-booking-form"
-              disabled={submitting || (priceCalculation && !priceCalculation.is_available)}
+              disabled={submitting || isStaff || (priceCalculation && !priceCalculation.is_available)}
               className={`w-full py-4 px-6 text-white font-black rounded-2xl shadow-lg transition transform hover:-translate-y-0.5 text-xs flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                 paymentMethod === 'cash'
                   ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-700 hover:from-emerald-700 hover:to-teal-800 shadow-emerald-600/30'
@@ -1005,6 +1046,11 @@ export default function BookingFlowPage() {
             >
               {submitting ? (
                 <span className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
+              ) : isStaff ? (
+                <>
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Hanya Akun Tamu yang Dapat Memesan</span>
+                </>
               ) : (priceCalculation && !priceCalculation.is_available) ? (
                 <>
                   <AlertCircle className="w-4 h-4" />
@@ -1013,7 +1059,7 @@ export default function BookingFlowPage() {
               ) : paymentMethod === 'cash' ? (
                 <>
                   <Banknote className="w-4 h-4" />
-                  <span>Konfirmasi Reservasi & Bayar di Hotel</span>
+                  <span>Konfirmasi Reservasi & Bayar di Tempat</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               ) : (

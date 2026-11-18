@@ -158,8 +158,16 @@ class PaymentService
 
             // Mapping Midtrans status according to Section 8.5 & Section 7
             if ($transactionStatus === 'settlement' || ($transactionStatus === 'capture' && $fraudStatus === 'accept')) {
-                // Success / Paid
-                if ($lockedPayment->status !== Payment::STATUS_PAID && $lockedPayment->status !== Payment::STATUS_PAID_NO_SLOT) {
+                // Success / Paid. Ignore repeated notifications (and status syncs) for a payment that is
+                // already paid or already in the refund flow, or a cancelled booking would be revived.
+                $alreadyHandled = [
+                    Payment::STATUS_PAID,
+                    Payment::STATUS_PAID_NO_SLOT,
+                    Payment::STATUS_REFUND_PENDING,
+                    Payment::STATUS_REFUNDED,
+                    Payment::STATUS_PARTIALLY_REFUNDED,
+                ];
+                if (! in_array($lockedPayment->status, $alreadyHandled, true)) {
                     $isHoldOverdue = ($booking->status === Booking::STATUS_EXPIRED) ||
                         ($booking->expires_at && $booking->expires_at->lte(Carbon::now()) && $booking->status === Booking::STATUS_PENDING_PAYMENT);
 
@@ -239,6 +247,11 @@ class PaymentService
             } elseif ($transactionStatus === 'refund') {
                 $lockedPayment->status = Payment::STATUS_REFUNDED;
                 $lockedPayment->save();
+
+                // The refund is done at Midtrans, so close any refund still waiting in our list
+                \App\Models\Refund::where('payment_id', $lockedPayment->id)
+                    ->where('status', \App\Models\Refund::STATUS_PENDING)
+                    ->update(['status' => \App\Models\Refund::STATUS_PROCESSED, 'processed_at' => Carbon::now()]);
             } elseif ($transactionStatus === 'partial_refund') {
                 $lockedPayment->status = Payment::STATUS_PARTIALLY_REFUNDED;
                 $lockedPayment->save();

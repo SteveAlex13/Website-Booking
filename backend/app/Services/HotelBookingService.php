@@ -8,6 +8,7 @@ use App\Models\BookingStatusHistory;
 use App\Models\DiscountCoupon;
 use App\Models\ExtraService;
 use App\Models\Payment;
+use App\Models\Refund;
 use App\Models\Room;
 use App\Models\RoomType;
 use App\Models\User;
@@ -47,6 +48,20 @@ class HotelBookingService
 
             if (! $roomType->is_active) {
                 throw new Exception('Tipe kamar ini sedang tidak aktif.');
+            }
+
+            // Guests must fit in the room
+            $adults = max(1, (int) ($data['total_adults'] ?? 1));
+            $children = max(0, (int) ($data['total_children'] ?? 0));
+
+            if ($roomType->max_adults && $adults > $roomType->max_adults) {
+                throw new Exception("Jumlah dewasa melebihi kapasitas kamar ini (maksimal {$roomType->max_adults} dewasa).");
+            }
+
+            if ($children > (int) $roomType->max_children) {
+                $maxChildren = (int) $roomType->max_children;
+                $limit = $maxChildren > 0 ? "maksimal {$maxChildren} anak" : 'kamar ini tidak menerima anak-anak';
+                throw new Exception("Jumlah anak melebihi kapasitas kamar ini ({$limit}).");
             }
 
             // 2. Check real inventory availability across the entire stay
@@ -179,7 +194,7 @@ class HotelBookingService
                     'old_status' => null,
                     'new_status' => Booking::STATUS_CONFIRMED,
                     'changed_by' => $user->id,
-                    'note' => 'Reservasi dibuat dengan metode Bayar Tunai di Hotel (Cash on Arrival). Menunggu pelunasan saat Check-In.',
+                    'note' => 'Reservasi dibuat dengan metode Bayar di Tempat. Menunggu pelunasan saat Check-In.',
                 ]);
             } else {
                 BookingStatusHistory::create([
@@ -207,6 +222,15 @@ class HotelBookingService
                 return $locked;
             }
 
+            // A guest who is already in the room (or has left) cannot be cancelled.
+            if ($locked->status === Booking::STATUS_CHECKED_IN) {
+                throw new Exception('Tamu sedang menginap, reservasi tidak bisa dibatalkan. Lakukan check-out terlebih dahulu.');
+            }
+
+            if ($locked->status === Booking::STATUS_CHECKED_OUT) {
+                throw new Exception('Reservasi yang sudah check-out tidak bisa dibatalkan.');
+            }
+
             $oldStatus = $locked->status;
             $locked->status = Booking::STATUS_CANCELLED;
             $locked->cancelled_at = Carbon::now();
@@ -227,6 +251,9 @@ class HotelBookingService
                 'changed_by' => $changedBy?->id,
                 'note' => $locked->cancellation_reason,
             ]);
+
+            $this->releaseCouponUse($locked);
+            $this->openRefundIfPaid($locked);
 
             return $locked;
         });
@@ -256,8 +283,51 @@ class HotelBookingService
                 'note' => 'Batas waktu pembayaran habis (Expired). Slot kamar otomatis dilepas.',
             ]);
 
+            $this->releaseCouponUse($locked);
+
             return true;
         });
+    }
+
+    /**
+     * Give the coupon quota back when a booking that used a coupon is cancelled or expires.
+     * Each booking reaches cancelled/expired only once, so the quota is never returned twice.
+     */
+    protected function releaseCouponUse(Booking $booking): void
+    {
+        if (! $booking->discount_coupon_id) {
+            return;
+        }
+
+        DiscountCoupon::where('id', $booking->discount_coupon_id)
+            ->where('used_count', '>', 0)
+            ->decrement('used_count');
+    }
+
+    /**
+     * If the guest already paid, record a refund for the super admin to process.
+     * The payment leaves PAID so it no longer counts as revenue.
+     */
+    protected function openRefundIfPaid(Booking $booking): void
+    {
+        $payment = Payment::where('booking_id', $booking->id)
+            ->whereIn('status', [Payment::STATUS_PAID, Payment::STATUS_PAID_NO_SLOT])
+            ->latest('id')
+            ->first();
+
+        if (! $payment) {
+            return;
+        }
+
+        Refund::create([
+            'payment_id' => $payment->id,
+            'amount' => $payment->gross_amount,
+            'reason' => $booking->cancellation_reason,
+            'status' => Refund::STATUS_PENDING,
+        ]);
+
+        $payment->status = Payment::STATUS_REFUND_PENDING;
+        $payment->save();
     }
 
     /**
@@ -268,6 +338,27 @@ class HotelBookingService
         return DB::transaction(function () use ($booking, $roomId, $admin) {
             $locked = Booking::where('id', $booking->id)->lockForUpdate()->firstOrFail();
             $room = Room::where('id', $roomId)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== Booking::STATUS_CONFIRMED) {
+                throw new Exception('Check-in hanya bisa dilakukan untuk reservasi yang sudah terkonfirmasi (lunas atau bayar di tempat).');
+            }
+
+            // Check-in is only allowed during the booked stay (from the check-in date until the day before check-out)
+            $today = Carbon::today();
+            $stayStart = $locked->check_in_date->copy()->startOfDay();
+            $stayEnd = $locked->check_out_date->copy()->startOfDay();
+
+            if ($today->lt($stayStart)) {
+                throw new Exception('Belum waktunya check-in. Tanggal check-in reservasi ini adalah ' . $stayStart->format('d-m-Y') . '.');
+            }
+
+            if ($today->gte($stayEnd)) {
+                throw new Exception('Masa menginap reservasi ini sudah lewat (check-out ' . $stayEnd->format('d-m-Y') . '). Check-in tidak bisa dilakukan.');
+            }
+
+            if ((int) $room->room_type_id !== (int) $locked->room_type_id) {
+                throw new Exception("Kamar No. {$room->room_number} bukan tipe kamar yang dipesan tamu. Pilih unit kamar dengan tipe yang sama.");
+            }
 
             if ($room->status !== 'available') {
                 $statusLabels = [
@@ -320,6 +411,10 @@ class HotelBookingService
     {
         return DB::transaction(function () use ($booking, $admin) {
             $locked = Booking::where('id', $booking->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== Booking::STATUS_CHECKED_IN) {
+                throw new Exception('Check-out hanya bisa dilakukan untuk tamu yang sedang check-in.');
+            }
 
             $oldStatus = $locked->status;
             $locked->status = Booking::STATUS_CHECKED_OUT;

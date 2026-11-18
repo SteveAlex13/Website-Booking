@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
+import { useAuth } from '../../contexts/AuthContext';
 import { formatRupiah, formatDateTime, formatDate, BOOKING_STATUS_CONFIG } from '../../utils/format';
 import {
   Users,
@@ -28,6 +29,7 @@ import {
 } from 'recharts';
 
 export default function AdminDashboardPage() {
+  const { isSuperAdmin } = useAuth(); // front desk does not see revenue (the API also omits it)
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -94,7 +96,8 @@ export default function AdminDashboardPage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black">Front Desk & Hotel Overview</h1>
           <p className="text-slate-300 text-xs sm:text-sm max-w-xl">
-            Monitoring okupansi kamar, kedatangan & keberangkatan tamu hari ini, serta pendapatan Midtrans.
+            Monitoring okupansi kamar, kedatangan & keberangkatan tamu hari ini
+            {isSuperAdmin ? ', serta pendapatan Midtrans.' : '.'}
           </p>
         </div>
 
@@ -115,7 +118,11 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Hotel Front Desk Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 gap-5 ${
+          isSuperAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
+        }`}
+      >
         {/* Occupancy Rate */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
@@ -164,23 +171,25 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Total Revenue */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              Total Revenue Lunas
-            </span>
-            <p className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
-              {formatRupiah(total_revenue)}
-            </p>
-            <span className="text-xs text-slate-500 font-semibold mt-1 block">
-              Pembayaran Midtrans & QRIS
-            </span>
+        {/* Total Revenue (super admin only) */}
+        {isSuperAdmin && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Total Revenue Lunas
+              </span>
+              <p className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
+                {formatRupiah(total_revenue)}
+              </p>
+              <span className="text-xs text-slate-500 font-semibold mt-1 block">
+                Pembayaran Midtrans & QRIS
+              </span>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <CreditCard className="w-6 h-6" />
+            </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <CreditCard className="w-6 h-6" />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Housekeeping & Room Status Distribution */}
@@ -232,7 +241,8 @@ export default function AdminDashboardPage() {
 
       {/* Revenue Trend Chart & Recent Bookings */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart */}
+        {/* Chart (super admin only) */}
+        {isSuperAdmin && (
         <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -244,7 +254,7 @@ export default function AdminDashboardPage() {
 
           <div className="h-64 w-full pt-4">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueTrend}>
+              <AreaChart data={revenue_trend}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#d97706" stopOpacity={0.4} />
@@ -275,9 +285,14 @@ export default function AdminDashboardPage() {
             </ResponsiveContainer>
           </div>
         </div>
+        )}
 
         {/* Recent Bookings List */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
+        <div
+          className={`bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between ${
+            isSuperAdmin ? '' : 'lg:col-span-3'
+          }`}
+        >
           <div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-slate-900 text-sm">Reservasi Terbaru</h3>
@@ -287,10 +302,10 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="space-y-3">
-              {recentBookings.length === 0 ? (
+              {recent_bookings.length === 0 ? (
                 <p className="text-xs text-slate-400 py-6 text-center">Belum ada reservasi masuk.</p>
               ) : (
-                recentBookings.map((b) => {
+                recent_bookings.map((b) => {
                   const cfg = BOOKING_STATUS_CONFIG[b.status] || BOOKING_STATUS_CONFIG.PENDING_PAYMENT;
                   return (
                     <div

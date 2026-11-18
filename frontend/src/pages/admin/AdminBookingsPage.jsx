@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import { formatRupiah, formatDate, formatDateTime, BOOKING_STATUS_CONFIG } from '../../utils/format';
 import {
@@ -24,6 +25,7 @@ import {
 
 export default function AdminBookingsPage() {
   const toast = useToast();
+  const { isSuperAdmin } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
@@ -183,7 +185,8 @@ export default function AdminBookingsPage() {
         cancellation_key: cancellationKeyInput.trim(),
         reason: cancelReason,
       });
-      toast.success(res.data?.message || `Reservasi ${selectedBookingForCancel.booking_code} berhasil dibatalkan.`);
+      // The message also tells when a refund was recorded for a paid booking
+      toast.success(res.message || `Reservasi ${selectedBookingForCancel.booking_code} berhasil dibatalkan.`);
       setCancelModalOpen(false);
       setSelectedBookingForCancel(null);
       fetchBookings();
@@ -357,7 +360,7 @@ export default function AdminBookingsPage() {
                         <div className="mt-1">
                           {b.payment_method === 'cash' ? (
                             <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                              💵 Tunai di Hotel
+                              💵 Bayar di Tempat
                             </span>
                           ) : (
                             <span className="inline-flex items-center text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
@@ -398,8 +401,8 @@ export default function AdminBookingsPage() {
                           </button>
                         )}
 
-                        {/* Cancel Booking Button (Requires Super Admin Key) */}
-                        {b.status !== 'CANCELLED' && b.status !== 'CHECKED_OUT' && (
+                        {/* Cancel Booking Button (super admin only, requires the cancellation key) */}
+                        {isSuperAdmin && b.status !== 'CANCELLED' && b.status !== 'CHECKED_OUT' && (
                           <button
                             type="button"
                             onClick={() => openCancelModal(b)}
@@ -496,7 +499,7 @@ export default function AdminBookingsPage() {
               <div className="flex justify-between pt-1 border-t border-slate-200">
                 <span className="text-slate-500">Metode & Tagihan:</span>
                 <span className="font-bold text-slate-900">
-                  {selectedBookingForCheckIn.payment_method === 'cash' ? '💵 Bayar di Hotel' : '💳 Midtrans Online'} — {formatRupiah(selectedBookingForCheckIn.total_amount)}
+                  {selectedBookingForCheckIn.payment_method === 'cash' ? '💵 Bayar di Tempat' : '💳 Midtrans Online'} — {formatRupiah(selectedBookingForCheckIn.total_amount)}
                 </span>
               </div>
             </div>
@@ -505,9 +508,9 @@ export default function AdminBookingsPage() {
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start space-x-2">
                 <span className="text-base leading-none">⚠️</span>
                 <div>
-                  <p className="font-bold">Tagihan Tunai Front Desk:</p>
+                  <p className="font-bold">Tagihan Bayar di Tempat (Front Desk):</p>
                   <p className="text-[11px] text-amber-800 mt-0.5">
-                    Pastikan menerima pembayaran tunai sebesar <strong>{formatRupiah(selectedBookingForCheckIn.total_amount)}</strong> dari tamu sebelum menyerahkan kunci kamar. Status pembayaran tunai akan otomatis ditandai <strong>LUNAS</strong> setelah tombol konfirmasi check-in ditekan.
+                    Pastikan menerima pembayaran sebesar <strong>{formatRupiah(selectedBookingForCheckIn.total_amount)}</strong> dari tamu sebelum menyerahkan kunci kamar. Status pembayaran akan otomatis ditandai <strong>LUNAS</strong> setelah tombol konfirmasi check-in ditekan.
                   </p>
                 </div>
               </div>

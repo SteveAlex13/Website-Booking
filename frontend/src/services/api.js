@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { loadingBar } from '../utils/loadingBar';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1',
@@ -12,6 +13,7 @@ const api = axios.create({
 // Request interceptor to attach Bearer token
 api.interceptors.request.use(
   (config) => {
+    loadingBar.start(); // top loading bar runs until the response (or error) arrives
     const token = localStorage.getItem('auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -23,8 +25,12 @@ api.interceptors.request.use(
 
 // Response interceptor
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    loadingBar.done();
+    return response.data;
+  },
   (error) => {
+    loadingBar.done();
     if (error.response) {
       if (error.response.status === 401) {
         localStorage.removeItem('auth_token');
