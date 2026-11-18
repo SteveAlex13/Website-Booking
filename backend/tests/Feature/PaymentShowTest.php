@@ -64,7 +64,7 @@ class PaymentShowTest extends TestCase
     public function test_admin_can_list_payments_and_filter_by_status(): void
     {
         $payment = $this->createPendingPayment(User::factory()->create(['role' => 'customer']));
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'super_admin']);
 
         $this->asUser($admin)
             ->getJson('/api/v1/admin/payments')

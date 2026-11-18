@@ -21,6 +21,10 @@ import {
   XCircle,
   Shield,
   Key,
+  CreditCard,
+  Banknote,
+  QrCode,
+  Smartphone,
 } from 'lucide-react';
 
 export default function AdminBookingsPage() {
@@ -42,6 +46,9 @@ export default function AdminBookingsPage() {
   const [allRoomsOfType, setAllRoomsOfType] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [checkingIn, setCheckingIn] = useState(false);
+  const [offlinePaymentMethod, setOfflinePaymentMethod] = useState('cash'); // 'cash' | 'debit_card' | 'credit_card'
+  const [selectedBank, setSelectedBank] = useState('bca'); // 'bca' | 'bri' | 'btn' | 'mandiri' | 'other'
+  const [cardReference, setCardReference] = useState('');
 
   // Check-Out Modal State
   const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
@@ -96,12 +103,79 @@ export default function AdminBookingsPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const renderPaymentBadge = (booking) => {
+    const payment = booking?.latest_payment || booking?.latestPayment;
+    const pType = payment?.payment_type;
+    const isPaid = payment?.status === 'PAID';
+
+    if (booking?.payment_method === 'cash') {
+      if (isPaid && pType) {
+        if (pType === 'cash') {
+          return (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <Banknote className="w-3 h-3 text-emerald-600" />
+              <span>Tunai (Front Desk)</span>
+            </span>
+          );
+        }
+        if (pType.startsWith('qris_')) {
+          const bank = pType.replace('qris_', '').toUpperCase();
+          return (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+              <QrCode className="w-3 h-3 text-teal-600" />
+              <span>QRIS {bank} (EDC)</span>
+            </span>
+          );
+        }
+        if (pType.startsWith('debit_')) {
+          const bank = pType.replace('debit_', '').toUpperCase();
+          return (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+              <CreditCard className="w-3 h-3 text-blue-600" />
+              <span>Debit {bank} (EDC)</span>
+            </span>
+          );
+        }
+        if (pType.startsWith('credit_')) {
+          const bank = pType.replace('credit_', '').toUpperCase();
+          return (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+              <CreditCard className="w-3 h-3 text-purple-600" />
+              <span>CC {bank} (EDC)</span>
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+            <CreditCard className="w-3 h-3 text-indigo-600" />
+            <span>{pType.toUpperCase()} (EDC)</span>
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+          <Banknote className="w-3 h-3 text-amber-600" />
+          <span>Bayar di Tempat</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+        <CreditCard className="w-3 h-3 text-blue-600" />
+        <span>Midtrans</span>
+      </span>
+    );
+  };
+
   // Open Check-In Modal
   const openCheckInModal = async (booking) => {
     setSelectedBookingForCheckIn(booking);
     setSelectedRoomId('');
     setAvailableRooms([]);
     setAllRoomsOfType([]);
+    setOfflinePaymentMethod('cash');
+    setSelectedBank('bca');
+    setCardReference('');
     setCheckInModalOpen(true);
     try {
       const res = await adminService.getAvailableRoomsForBooking(booking.id);
@@ -127,7 +201,14 @@ export default function AdminBookingsPage() {
     }
     setCheckingIn(true);
     try {
-      await adminService.checkInGuest(selectedBookingForCheckIn.id, selectedRoomId);
+      const isCashBooking = selectedBookingForCheckIn?.payment_method === 'cash';
+      const payload = {
+        room_id: Number(selectedRoomId),
+        offline_payment_method: isCashBooking ? offlinePaymentMethod : undefined,
+        bank: isCashBooking && offlinePaymentMethod !== 'cash' ? selectedBank : undefined,
+        card_reference: isCashBooking && offlinePaymentMethod !== 'cash' && cardReference.trim() ? cardReference.trim() : undefined,
+      };
+      await adminService.checkInGuest(selectedBookingForCheckIn.id, payload);
       toast.success(
         `Tamu ${selectedBookingForCheckIn.customer_name} berhasil Check-In!`
       );
@@ -358,15 +439,7 @@ export default function AdminBookingsPage() {
                       <td className="px-6 py-4">
                         <span className="font-black text-slate-900">{formatRupiah(b.total_amount)}</span>
                         <div className="mt-1">
-                          {b.payment_method === 'cash' ? (
-                            <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                              💵 Bayar di Tempat
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                              💳 Midtrans
-                            </span>
-                          )}
+                          {renderPaymentBadge(b)}
                         </div>
                       </td>
 
@@ -460,121 +533,267 @@ export default function AdminBookingsPage() {
         )}
       </div>
 
-      {/* Check-In Modal with Physical Room Unit Assignment */}
+      {/* Check-In Modal with Physical Room Unit Assignment & Front Desk Settlement */}
       {checkInModalOpen && selectedBookingForCheckIn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5">
-            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 my-auto max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 pb-4 border-b border-slate-100 flex justify-between items-start flex-shrink-0 bg-white">
               <div>
-                <span className="text-[10px] font-mono text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md font-bold">
+                <span className="text-[10px] font-mono text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md font-bold border border-amber-200">
                   {selectedBookingForCheckIn.booking_code}
                 </span>
-                <h3 className="text-lg font-black text-slate-900 mt-2">
-                  Check-In Tamu: {selectedBookingForCheckIn.customer_name}
+                <h3 className="text-base sm:text-lg font-black text-slate-900 mt-1.5 flex items-center gap-2">
+                  <span>Check-In Tamu:</span>
+                  <span className="text-amber-600">{selectedBookingForCheckIn.customer_name}</span>
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setCheckInModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center font-bold text-sm transition"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-2xl text-xs space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Tipe Suite:</span>
-                <span className="font-bold text-slate-900">{selectedBookingForCheckIn.room_type?.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Durasi Menginap:</span>
-                <span className="font-bold text-slate-900">{selectedBookingForCheckIn.total_nights || 1} Malam</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Periode:</span>
-                <span className="font-semibold text-slate-800">
-                  {formatDate(selectedBookingForCheckIn.check_in_date)} — {formatDate(selectedBookingForCheckIn.check_out_date)}
-                </span>
-              </div>
-              <div className="flex justify-between pt-1 border-t border-slate-200">
-                <span className="text-slate-500">Metode & Tagihan:</span>
-                <span className="font-bold text-slate-900">
-                  {selectedBookingForCheckIn.payment_method === 'cash' ? '💵 Bayar di Tempat' : '💳 Midtrans Online'} — {formatRupiah(selectedBookingForCheckIn.total_amount)}
-                </span>
-              </div>
-            </div>
+            {/* Modal Body & Form (Scrollable) */}
+            <form onSubmit={handleConfirmCheckIn} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                {/* Stay Info Card */}
+                <div className="p-4 bg-slate-50 rounded-2xl text-xs space-y-2 border border-slate-100">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Tipe Suite:</span>
+                    <span className="font-bold text-slate-900">{selectedBookingForCheckIn.room_type?.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Durasi Menginap:</span>
+                    <span className="font-bold text-slate-900">{selectedBookingForCheckIn.total_nights || 1} Malam</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Periode:</span>
+                    <span className="font-semibold text-slate-800">
+                      {formatDate(selectedBookingForCheckIn.check_in_date)} — {formatDate(selectedBookingForCheckIn.check_out_date)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                    <span className="text-slate-500">Metode & Tagihan:</span>
+                    <span className="font-black text-slate-900 flex items-center gap-1.5">
+                      {selectedBookingForCheckIn.payment_method === 'cash' ? (
+                        <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px] font-bold border border-amber-200">
+                          <Banknote className="w-3 h-3 text-amber-600" />
+                          <span>Bayar di Tempat</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[11px] font-bold border border-blue-200">
+                          <CreditCard className="w-3 h-3 text-blue-600" />
+                          <span>Midtrans Online</span>
+                        </span>
+                      )}
+                      <span>{formatRupiah(selectedBookingForCheckIn.total_amount)}</span>
+                    </span>
+                  </div>
+                </div>
 
-            {selectedBookingForCheckIn.payment_method === 'cash' && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start space-x-2">
-                <span className="text-base leading-none">⚠️</span>
-                <div>
-                  <p className="font-bold">Tagihan Bayar di Tempat (Front Desk):</p>
-                  <p className="text-[11px] text-amber-800 mt-0.5">
-                    Pastikan menerima pembayaran sebesar <strong>{formatRupiah(selectedBookingForCheckIn.total_amount)}</strong> dari tamu sebelum menyerahkan kunci kamar. Status pembayaran akan otomatis ditandai <strong>LUNAS</strong> setelah tombol konfirmasi check-in ditekan.
-                  </p>
+                {/* Front Desk Payment Settlement for Cash on Arrival */}
+                {selectedBookingForCheckIn.payment_method === 'cash' && (
+                  <div className="p-4 bg-gradient-to-br from-amber-50/90 to-orange-50/40 border border-amber-200/80 rounded-2xl text-xs space-y-3.5 shadow-sm">
+                    <div className="flex items-center justify-between pb-2.5 border-b border-amber-200/70">
+                      <div className="flex items-center space-x-2 text-amber-950 font-black">
+                        <Banknote className="w-4 h-4 text-amber-600" />
+                        <span>Pelunasan Tagihan di Front Desk</span>
+                      </div>
+                      <span className="text-sm font-black text-amber-900">
+                        {formatRupiah(selectedBookingForCheckIn.total_amount)}
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-800 mb-2">
+                        Pilih Metode Pembayaran Tamu:
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setOfflinePaymentMethod('cash')}
+                          className={`p-2.5 rounded-xl border text-xs font-bold transition flex flex-col items-center justify-center gap-1.5 ${
+                            offlinePaymentMethod === 'cash'
+                              ? 'bg-amber-500 text-white border-amber-600 shadow-md ring-2 ring-amber-400/30'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-amber-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <Banknote className={`w-4 h-4 ${offlinePaymentMethod === 'cash' ? 'text-white' : 'text-amber-600'}`} />
+                          <span className="text-[11px]">Tunai (Cash)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setOfflinePaymentMethod('qris')}
+                          className={`p-2.5 rounded-xl border text-xs font-bold transition flex flex-col items-center justify-center gap-1.5 ${
+                            offlinePaymentMethod === 'qris'
+                              ? 'bg-teal-600 text-white border-teal-700 shadow-md ring-2 ring-teal-400/30'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <QrCode className={`w-4 h-4 ${offlinePaymentMethod === 'qris' ? 'text-white' : 'text-teal-600'}`} />
+                          <span className="text-[11px]">QRIS (EDC)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setOfflinePaymentMethod('debit_card')}
+                          className={`p-2.5 rounded-xl border text-xs font-bold transition flex flex-col items-center justify-center gap-1.5 ${
+                            offlinePaymentMethod === 'debit_card'
+                              ? 'bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-400/30'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <CreditCard className={`w-4 h-4 ${offlinePaymentMethod === 'debit_card' ? 'text-white' : 'text-blue-600'}`} />
+                          <span className="text-[11px]">Kartu Debit</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setOfflinePaymentMethod('credit_card')}
+                          className={`p-2.5 rounded-xl border text-xs font-bold transition flex flex-col items-center justify-center gap-1.5 ${
+                            offlinePaymentMethod === 'credit_card'
+                              ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-400/30'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-purple-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <CreditCard className={`w-4 h-4 ${offlinePaymentMethod === 'credit_card' ? 'text-white' : 'text-purple-600'}`} />
+                          <span className="text-[11px]">Kartu Kredit</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {offlinePaymentMethod !== 'cash' && (
+                      <div className="space-y-3 pt-2.5 border-t border-amber-200/80">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-800 mb-1.5">
+                            {offlinePaymentMethod === 'qris'
+                              ? 'Pilih Mesin EDC Penerima QRIS (Masuk ke Rekening Bank):'
+                              : `Pilih Mesin EDC / Bank (${offlinePaymentMethod === 'debit_card' ? 'Debit' : 'Kredit'}):`}
+                          </label>
+                          <div className="grid grid-cols-4 gap-2">
+                            {[
+                              { id: 'bca', label: 'BCA', activeBg: 'bg-blue-700 text-white border-blue-800 ring-2 ring-blue-600/30' },
+                              { id: 'bri', label: 'BRI', activeBg: 'bg-blue-600 text-white border-blue-700 ring-2 ring-blue-500/30' },
+                              { id: 'btn', label: 'BTN', activeBg: 'bg-amber-600 text-white border-amber-700 ring-2 ring-amber-500/30' },
+                              { id: 'mandiri', label: 'Mandiri', activeBg: 'bg-sky-800 text-white border-sky-900 ring-2 ring-sky-700/30' },
+                            ].map((b) => (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => setSelectedBank(b.id)}
+                                className={`py-2 px-1 text-center rounded-xl border text-xs font-black transition ${
+                                  selectedBank === b.id
+                                    ? `${b.activeBg} shadow-sm`
+                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {b.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-800 mb-1">
+                            {offlinePaymentMethod === 'qris'
+                              ? 'Nomor Referensi / RRN Bukti QRIS (Opsional):'
+                              : 'Nomor Referensi / Approval Code EDC (Opsional):'}
+                          </label>
+                          <input
+                            type="text"
+                            value={cardReference}
+                            onChange={(e) => setCardReference(e.target.value)}
+                            placeholder={
+                              offlinePaymentMethod === 'qris'
+                                ? 'Contoh: RRN-998231 atau 4 Digit Terakhir Struk'
+                                : 'Contoh: BCA-883921 atau 4 Digit Terakhir Struk'
+                            }
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-amber-900 font-medium flex items-center gap-1.5 bg-amber-100/70 p-2 rounded-lg">
+                      <span className="text-xs">💡</span>
+                      <span>Status pembayaran otomatis ditandai <strong>LUNAS</strong> setelah check-in berhasil dikonfirmasi.</span>
+                    </p>
+                  </div>
+                )}
+
+                {/* Room Unit Selection */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="block text-xs font-bold text-slate-800 flex justify-between items-center">
+                    <span>Pilih Unit Kamar Fisik (Status: Ready Clean) *</span>
+                    <span className="text-[11px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                      {availableRooms.length} kamar ready
+                    </span>
+                  </label>
+
+                  {availableRooms.length === 0 ? (
+                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+                      <p className="font-bold">Tidak ada unit kamar yang berstatus Ready (Tersedia).</p>
+                      <p className="text-[11px] text-rose-700">
+                        Semua unit kamar tipe ini sedang berstatus <strong>Terisi (Occupied)</strong> atau <strong>Sedang Dibersihkan (Cleaning)</strong>. Silakan periksa status kebersihan kamar di menu Inventaris Kamar terlebih dahulu.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={selectedRoomId}
+                        onChange={(e) => setSelectedRoomId(e.target.value)}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        required
+                      >
+                        {availableRooms.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            Unit Kamar #{r.room_number} — Lantai {r.floor} (Siap Pakai / Ready Clean)
+                          </option>
+                        ))}
+                      </select>
+
+                      <p className="text-[11px] text-slate-500 mt-1.5 flex items-center space-x-1">
+                        <span>ℹ️</span>
+                        <span>Unit kamar yang dipilih akan otomatis berubah statusnya menjadi <strong>Terisi (Occupied)</strong>.</span>
+                      </p>
+                    </>
+                  )}
+
+                  {allRoomsOfType.length > availableRooms.length && (
+                    <div className="mt-2 p-2.5 bg-slate-100 rounded-xl text-[11px] text-slate-600">
+                      Total unit tipe ini: {allRoomsOfType.length} kamar ({allRoomsOfType.length - availableRooms.length} kamar sedang terisi / dalam pembersihan).
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
 
-            <form onSubmit={handleConfirmCheckIn} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5 flex justify-between">
-                  <span>Pilih Unit Kamar Fisik (Status: Ready Clean) *</span>
-                  <span className="text-[11px] text-emerald-600 font-semibold">
-                    {availableRooms.length} kamar ready
-                  </span>
-                </label>
-
-                {availableRooms.length === 0 ? (
-                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
-                    <p className="font-bold">Tidak ada unit kamar yang berstatus Ready (Tersedia).</p>
-                    <p className="text-[11px] text-rose-700">
-                      Semua unit kamar tipe ini sedang berstatus <strong>Terisi (Occupied)</strong> atau <strong>Sedang Dibersihkan (Cleaning)</strong>. Silakan periksa dan perbarui status kebersihan kamar di menu Inventaris Kamar terlebih dahulu.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <select
-                      value={selectedRoomId}
-                      onChange={(e) => setSelectedRoomId(e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                      required
-                    >
-                      {availableRooms.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          Unit Kamar #{r.room_number} — Lantai {r.floor} (Siap Pakai / Ready Clean)
-                        </option>
-                      ))}
-                    </select>
-
-                    <p className="text-[11px] text-slate-500 mt-1.5 flex items-center space-x-1">
-                      <span>ℹ️</span>
-                      <span>Unit kamar yang dipilih akan otomatis berubah statusnya menjadi <strong>Terisi (Occupied)</strong>.</span>
-                    </p>
-                  </>
-                )}
-
-                {allRoomsOfType.length > availableRooms.length && (
-                  <div className="mt-2 p-2.5 bg-slate-100 rounded-xl text-[11px] text-slate-600">
-                    Total unit tipe ini: {allRoomsOfType.length} kamar ({allRoomsOfType.length - availableRooms.length} kamar sedang terisi / dalam pembersihan).
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2">
+              {/* Sticky Modal Action Footer */}
+              <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50/90 flex items-center justify-end space-x-2.5 flex-shrink-0">
                 <button
                   type="button"
                   onClick={() => setCheckInModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={checkingIn || availableRooms.length === 0}
-                  className="px-5 py-2.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-md transition disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-md transition disabled:opacity-50 flex items-center space-x-1.5"
                 >
-                  {checkingIn ? 'Memproses...' : 'Konfirmasi Check-In Tamu'}
+                  {checkingIn ? (
+                    <span>Memproses...</span>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Konfirmasi Check-In Tamu</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -683,7 +902,12 @@ export default function AdminBookingsPage() {
               )}
 
               <div className="p-4 bg-amber-50/50 border border-amber-200/60 rounded-2xl flex justify-between items-center">
-                <span className="font-black text-slate-900">Total Pembayaran:</span>
+                <div>
+                  <span className="font-black text-slate-900 block">Total Tagihan:</span>
+                  <div className="mt-1">
+                    {renderPaymentBadge(viewingBooking)}
+                  </div>
+                </div>
                 <span className="text-base font-black text-amber-800">{formatRupiah(viewingBooking.total_amount)}</span>
               </div>
             </div>

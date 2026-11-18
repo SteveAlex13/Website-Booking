@@ -63,7 +63,7 @@ class AuthController extends Controller
         }
 
         // Deactivated accounts cannot log in
-        if (! $user->is_active) {
+        if ($user->is_active === false) {
             return response()->json([
                 'success' => false,
                 'message' => 'Akun Anda dinonaktifkan. Hubungi administrator hotel.',

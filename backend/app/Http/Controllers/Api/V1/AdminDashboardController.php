@@ -141,12 +141,119 @@ class AdminDashboardController extends Controller
 
         $totalPeriodBookings = (clone $bookingsQuery)->count();
 
-        $revenuePeriod = Payment::where('status', Payment::STATUS_PAID)
-            ->whereBetween('paid_at', [
-                Carbon::parse($startDate)->startOfDay(),
-                Carbon::parse($endDate)->endOfDay(),
-            ])
-            ->sum('gross_amount');
+        $paymentsQuery = Payment::where('status', Payment::STATUS_PAID)
+            ->where(function ($q) use ($startDate, $endDate) {
+                $start = Carbon::parse($startDate)->startOfDay();
+                $end = Carbon::parse($endDate)->endOfDay();
+                $q->whereBetween('paid_at', [$start, $end])
+                  ->orWhere(function ($q2) use ($start, $end) {
+                      $q2->whereNull('paid_at')->whereBetween('updated_at', [$start, $end]);
+                  });
+            });
+
+        $paidPayments = $paymentsQuery->get();
+        $revenuePeriod = (float) $paidPayments->sum('gross_amount');
+
+        // Bentuk Uang Masuk Breakdown: Cash, QRIS EDC, Debit Card, Credit Card, Midtrans
+        $cashAmount = 0.0;
+        $cashCount = 0;
+
+        $qrisAmount = 0.0;
+        $qrisCount = 0;
+        $qrisBanks = ['bca' => 0.0, 'bri' => 0.0, 'btn' => 0.0, 'mandiri' => 0.0, 'other' => 0.0];
+
+        $debitAmount = 0.0;
+        $debitCount = 0;
+        $debitBanks = ['bca' => 0.0, 'bri' => 0.0, 'btn' => 0.0, 'mandiri' => 0.0, 'other' => 0.0];
+
+        $creditAmount = 0.0;
+        $creditCount = 0;
+        $creditBanks = ['bca' => 0.0, 'bri' => 0.0, 'btn' => 0.0, 'mandiri' => 0.0, 'other' => 0.0];
+
+        $midtransAmount = 0.0;
+        $midtransCount = 0;
+        $midtransChannels = [];
+
+        foreach ($paidPayments as $p) {
+            $amount = (float) $p->gross_amount;
+            $type = strtolower((string) $p->payment_type);
+            $isFrontDesk = ($p->provider_status === 'settled_at_front_desk') || str_starts_with((string) $p->order_id, 'CASH-');
+
+            if ($type === 'cash' || ($isFrontDesk && empty($type))) {
+                $cashAmount += $amount;
+                $cashCount++;
+            } elseif (str_starts_with($type, 'qris_') && $isFrontDesk) {
+                $qrisAmount += $amount;
+                $qrisCount++;
+                $bankKey = str_replace('qris_', '', $type);
+                if (isset($qrisBanks[$bankKey])) {
+                    $qrisBanks[$bankKey] += $amount;
+                } else {
+                    $qrisBanks['other'] += $amount;
+                }
+            } elseif (str_starts_with($type, 'debit_') || ($isFrontDesk && str_contains($type, 'debit'))) {
+                $debitAmount += $amount;
+                $debitCount++;
+                $bankKey = str_replace('debit_', '', $type);
+                if (isset($debitBanks[$bankKey])) {
+                    $debitBanks[$bankKey] += $amount;
+                } else {
+                    $debitBanks['other'] += $amount;
+                }
+            } elseif (str_starts_with($type, 'credit_') && $isFrontDesk) {
+                $creditAmount += $amount;
+                $creditCount++;
+                $bankKey = str_replace(['credit_', 'credit_card_'], '', $type);
+                if (isset($creditBanks[$bankKey])) {
+                    $creditBanks[$bankKey] += $amount;
+                } else {
+                    $creditBanks['other'] += $amount;
+                }
+            } else {
+                // Online Midtrans
+                $midtransAmount += $amount;
+                $midtransCount++;
+                $channelName = strtoupper($type ?: 'SNAP');
+                $midtransChannels[$channelName] = ($midtransChannels[$channelName] ?? 0.0) + $amount;
+            }
+        }
+
+        $paymentChannels = [
+            'cash' => [
+                'label' => 'Uang Tunai (Cash)',
+                'total_amount' => $cashAmount,
+                'count' => $cashCount,
+                'percentage' => $revenuePeriod > 0 ? round(($cashAmount / $revenuePeriod) * 100, 1) : 0,
+            ],
+            'qris' => [
+                'label' => 'QRIS (Mesin EDC)',
+                'total_amount' => $qrisAmount,
+                'count' => $qrisCount,
+                'percentage' => $revenuePeriod > 0 ? round(($qrisAmount / $revenuePeriod) * 100, 1) : 0,
+                'banks' => $qrisBanks,
+            ],
+            'debit_card' => [
+                'label' => 'Kartu Debit (EDC)',
+                'total_amount' => $debitAmount,
+                'count' => $debitCount,
+                'percentage' => $revenuePeriod > 0 ? round(($debitAmount / $revenuePeriod) * 100, 1) : 0,
+                'banks' => $debitBanks,
+            ],
+            'credit_card' => [
+                'label' => 'Kartu Kredit (EDC)',
+                'total_amount' => $creditAmount,
+                'count' => $creditCount,
+                'percentage' => $revenuePeriod > 0 ? round(($creditAmount / $revenuePeriod) * 100, 1) : 0,
+                'banks' => $creditBanks,
+            ],
+            'midtrans' => [
+                'label' => 'Midtrans Online',
+                'total_amount' => $midtransAmount,
+                'count' => $midtransCount,
+                'percentage' => $revenuePeriod > 0 ? round(($midtransAmount / $revenuePeriod) * 100, 1) : 0,
+                'channels' => $midtransChannels,
+            ],
+        ];
 
         // Top booked room types
         $topRoomTypes = RoomType::withCount(['bookings' => function ($q) use ($startDate, $endDate) {
@@ -172,6 +279,7 @@ class AdminDashboardController extends Controller
                 'end_date' => $endDate,
                 'total_bookings' => $totalPeriodBookings,
                 'total_revenue' => (float) $revenuePeriod,
+                'payment_channels' => $paymentChannels,
                 'top_services' => $topRoomTypes, // compatibility with frontend table
                 'top_room_types' => $topRoomTypes,
                 'bookings' => $bookingsList,

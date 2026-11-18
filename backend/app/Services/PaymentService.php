@@ -270,8 +270,15 @@ class PaymentService
      */
     public function checkStatus(Payment $payment): Payment
     {
-        // Cash payment does not sync with Midtrans API
-        if ($payment->payment_type === 'cash' || str_starts_with((string) $payment->order_id, 'CASH-')) {
+        // Offline / Front desk payment does not sync with Midtrans API
+        if (
+            $payment->payment_type === 'cash'
+            || str_starts_with((string) $payment->payment_type, 'qris_')
+            || str_starts_with((string) $payment->payment_type, 'debit_')
+            || str_starts_with((string) $payment->payment_type, 'credit_')
+            || $payment->provider_status === 'settled_at_front_desk'
+            || str_starts_with((string) $payment->order_id, 'CASH-')
+        ) {
             return $payment;
         }
 

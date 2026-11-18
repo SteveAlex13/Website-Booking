@@ -331,11 +331,12 @@ class HotelBookingService
     }
 
     /**
-     * Front desk: Check In guest & assign physical room.
+     * Front desk / Admin: Check In guest & assign physical room.
+     * Settles offline payment if booking was bayar di tempat.
      */
-    public function checkIn(Booking $booking, int $roomId, ?User $admin = null): Booking
+    public function checkIn(Booking $booking, int $roomId, ?User $admin = null, array $paymentDetails = []): Booking
     {
-        return DB::transaction(function () use ($booking, $roomId, $admin) {
+        return DB::transaction(function () use ($booking, $roomId, $admin, $paymentDetails) {
             $locked = Booking::where('id', $booking->id)->lockForUpdate()->firstOrFail();
             $room = Room::where('id', $roomId)->lockForUpdate()->firstOrFail();
 
@@ -379,17 +380,63 @@ class HotelBookingService
             $room->status = 'occupied';
             $room->save();
 
-            // Settle pending cash payment if booking was cash on arrival
-            $cashPayment = Payment::where('booking_id', $locked->id)
-                ->where('payment_type', 'cash')
+            // Settle pending cash / pay-at-hotel payment if booking was bayar di tempat
+            $pendingPayment = Payment::where('booking_id', $locked->id)
                 ->where('status', Payment::STATUS_PENDING)
+                ->latest('id')
                 ->first();
 
-            if ($cashPayment) {
-                $cashPayment->status = Payment::STATUS_PAID;
-                $cashPayment->paid_at = Carbon::now();
-                $cashPayment->provider_status = 'settled_at_front_desk';
-                $cashPayment->save();
+            $method = $paymentDetails['payment_method'] ?? 'cash';
+            $bank = !empty($paymentDetails['bank']) ? strtolower($paymentDetails['bank']) : null;
+            $cardRef = !empty($paymentDetails['card_reference']) ? trim($paymentDetails['card_reference']) : null;
+
+            $methodLabel = 'Uang Tunai (Cash)';
+            $paymentType = 'cash';
+
+            if ($method === 'qris') {
+                $bankUpper = $bank ? strtoupper($bank) : 'EDC';
+                $paymentType = $bank ? "qris_{$bank}" : 'qris_edc';
+                $methodLabel = "QRIS {$bankUpper} (EDC)";
+            } elseif ($method === 'debit_card') {
+                $bankUpper = $bank ? strtoupper($bank) : 'EDC';
+                $paymentType = $bank ? "debit_{$bank}" : 'debit_card';
+                $methodLabel = "Kartu Debit {$bankUpper} (EDC)";
+            } elseif ($method === 'credit_card') {
+                $bankUpper = $bank ? strtoupper($bank) : 'EDC';
+                $paymentType = $bank ? "credit_{$bank}" : 'credit_card';
+                $methodLabel = "Kartu Kredit {$bankUpper} (EDC)";
+            }
+
+            if ($pendingPayment) {
+                $pendingPayment->payment_type = $paymentType;
+                $pendingPayment->status = Payment::STATUS_PAID;
+                $pendingPayment->paid_at = Carbon::now();
+                $pendingPayment->provider_status = 'settled_at_front_desk';
+                if ($cardRef) {
+                    $pendingPayment->transaction_id = $cardRef;
+                } elseif ($method !== 'cash') {
+                    $prefix = ($method === 'qris') ? 'QRIS-' : 'EDC-';
+                    $pendingPayment->transaction_id = $prefix . strtoupper($bank ?? 'EDC') . '-' . strtoupper(\Illuminate\Support\Str::random(6));
+                }
+
+                $existingResp = is_array($pendingPayment->provider_response) ? $pendingPayment->provider_response : [];
+                $pendingPayment->provider_response = array_merge($existingResp, [
+                    'settled_by_id' => $admin?->id,
+                    'settled_by_name' => $admin?->name,
+                    'settled_by_role' => $admin?->role,
+                    'settled_method' => $method,
+                    'bank' => $bank,
+                    'card_reference' => $cardRef,
+                    'settled_at' => Carbon::now()->toIso8601String(),
+                ]);
+                $pendingPayment->save();
+            }
+
+            $amountStr = 'Rp ' . number_format((float) $locked->total_amount, 0, ',', '.');
+            $refNote = $cardRef ? " [No Ref: {$cardRef}]" : '';
+            $historyNote = "Tamu check-in ke Kamar No. {$room->room_number} (Lantai {$room->floor}).";
+            if ($pendingPayment) {
+                $historyNote .= " Pembayaran {$amountStr} dilunasi via {$methodLabel}{$refNote}.";
             }
 
             BookingStatusHistory::create([
@@ -397,7 +444,7 @@ class HotelBookingService
                 'old_status' => $oldStatus,
                 'new_status' => Booking::STATUS_CHECKED_IN,
                 'changed_by' => $admin?->id,
-                'note' => "Tamu check-in ke Kamar No. {$room->room_number} (Lantai {$room->floor}).",
+                'note' => $historyNote,
             ]);
 
             return $locked;

@@ -3,10 +3,54 @@ import { adminService } from '../../services/adminService';
 import { useToast } from '../../contexts/ToastContext';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import { formatRupiah, formatDateTime, PAYMENT_STATUS_CONFIG } from '../../utils/format';
-import { Search, Eye, Undo2 } from 'lucide-react';
+import { Search, Eye, Undo2, Banknote, CreditCard, QrCode } from 'lucide-react';
 
 // The refund of this payment that is still waiting to be processed, if any
 const pendingRefundOf = (payment) => (payment.refunds || []).find((r) => r.status === 'PENDING');
+
+const formatPaymentType = (p) => {
+  const type = (p.payment_type || '').toLowerCase();
+  if (type === 'cash') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+        <Banknote className="w-3 h-3 text-emerald-600" />
+        <span>Tunai (Front Desk)</span>
+      </span>
+    );
+  }
+  if (type.startsWith('qris_')) {
+    const bank = type.replace('qris_', '').toUpperCase();
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+        <QrCode className="w-3 h-3 text-teal-600" />
+        <span>QRIS {bank} (EDC)</span>
+      </span>
+    );
+  }
+  if (type.startsWith('debit_')) {
+    const bank = type.replace('debit_', '').toUpperCase();
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+        <CreditCard className="w-3 h-3 text-blue-600" />
+        <span>Debit {bank} (EDC)</span>
+      </span>
+    );
+  }
+  if (type.startsWith('credit_')) {
+    const bank = type.replace('credit_', '').toUpperCase();
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+        <CreditCard className="w-3 h-3 text-purple-600" />
+        <span>CC {bank} (EDC)</span>
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-slate-700 font-semibold uppercase">
+      {p.payment_type || 'Snap'}
+    </span>
+  );
+};
 
 export default function AdminPaymentsPage() {
   const toast = useToast();
@@ -147,8 +191,8 @@ export default function AdminPaymentsPage() {
                       <td className="px-6 py-4 font-medium text-slate-800 whitespace-nowrap">
                         {p.booking?.customer_name || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600 font-semibold uppercase">
-                        {p.payment_type || 'Snap'}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {formatPaymentType(p)}
                       </td>
                       <td className="px-6 py-4 font-extrabold text-slate-900 whitespace-nowrap">
                         {formatRupiah(p.gross_amount)}

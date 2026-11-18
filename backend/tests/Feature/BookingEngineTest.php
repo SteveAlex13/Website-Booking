@@ -382,4 +382,155 @@ class BookingEngineTest extends TestCase
         $paymentA = \App\Models\Payment::where('order_id', $orderIdA)->first();
         $this->assertEquals('PAID_NO_SLOT', $paymentA->status);
     }
+
+    public function test_front_desk_can_check_in_cash_booking_with_debit_card_bca_settlement(): void
+    {
+        $checkIn = Carbon::today()->toDateString();
+        $checkOut = Carbon::today()->addDays(2)->toDateString();
+
+        $bookingRes = $this->actingAs($this->customer)
+            ->postJson('/api/v1/bookings', [
+                'room_type_id' => $this->roomType->id,
+                'check_in_date' => $checkIn,
+                'check_out_date' => $checkOut,
+                'total_adults' => 2,
+                'payment_method' => 'cash',
+            ]);
+
+        $bookingRes->assertStatus(201);
+        $bookingId = $bookingRes->json('data.id');
+        $booking = Booking::with('latestPayment')->findOrFail($bookingId);
+
+        $this->assertEquals('cash', $booking->payment_method);
+        $this->assertEquals('PENDING', $booking->latestPayment->status);
+
+        $frontDeskStaff = User::factory()->create(['role' => 'admin']);
+
+        $room = \App\Models\Room::create([
+            'room_type_id' => $this->roomType->id,
+            'room_number' => '102',
+            'floor' => 1,
+            'status' => 'available',
+        ]);
+
+        $checkInRes = $this->actingAs($frontDeskStaff)
+            ->postJson("/api/v1/admin/bookings/{$bookingId}/check-in", [
+                'room_id' => $room->id,
+                'offline_payment_method' => 'debit_card',
+                'bank' => 'bca',
+                'card_reference' => 'EDC-BCA-556677',
+            ]);
+
+        $checkInRes->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', Booking::STATUS_CHECKED_IN);
+
+        $booking->latestPayment->refresh();
+        $this->assertEquals('PAID', $booking->latestPayment->status);
+        $this->assertEquals('debit_bca', $booking->latestPayment->payment_type);
+        $this->assertEquals('EDC-BCA-556677', $booking->latestPayment->transaction_id);
+        $this->assertEquals('settled_at_front_desk', $booking->latestPayment->provider_status);
+
+        $history = \App\Models\BookingStatusHistory::where('booking_id', $booking->id)
+            ->where('new_status', Booking::STATUS_CHECKED_IN)
+            ->first();
+        $this->assertNotNull($history);
+        $this->assertStringContainsString('Kartu Debit BCA (EDC)', $history->note);
+        $this->assertStringContainsString('EDC-BCA-556677', $history->note);
+    }
+
+    public function test_front_desk_can_check_in_cash_booking_with_credit_card_mandiri_settlement(): void
+    {
+        $checkIn = Carbon::today()->toDateString();
+        $checkOut = Carbon::today()->addDays(1)->toDateString();
+
+        $bookingRes = $this->actingAs($this->customer)
+            ->postJson('/api/v1/bookings', [
+                'room_type_id' => $this->roomType->id,
+                'check_in_date' => $checkIn,
+                'check_out_date' => $checkOut,
+                'total_adults' => 1,
+                'payment_method' => 'cash',
+            ]);
+
+        $bookingRes->assertStatus(201);
+        $bookingId = $bookingRes->json('data.id');
+        $booking = Booking::with('latestPayment')->findOrFail($bookingId);
+
+        $frontDeskStaff = User::factory()->create(['role' => 'admin']);
+
+        $room = \App\Models\Room::create([
+            'room_type_id' => $this->roomType->id,
+            'room_number' => '103',
+            'floor' => 1,
+            'status' => 'available',
+        ]);
+
+        $checkInRes = $this->actingAs($frontDeskStaff)
+            ->postJson("/api/v1/admin/bookings/{$bookingId}/check-in", [
+                'room_id' => $room->id,
+                'offline_payment_method' => 'credit_card',
+                'bank' => 'mandiri',
+            ]);
+
+        $checkInRes->assertStatus(200)
+            ->assertJsonPath('success', true);
+
+        $booking->latestPayment->refresh();
+        $this->assertEquals('PAID', $booking->latestPayment->status);
+        $this->assertEquals('credit_mandiri', $booking->latestPayment->payment_type);
+        $this->assertStringStartsWith('EDC-MANDIRI-', $booking->latestPayment->transaction_id);
+        $this->assertEquals('settled_at_front_desk', $booking->latestPayment->provider_status);
+    }
+
+    public function test_front_desk_can_check_in_cash_booking_with_qris_bca_settlement(): void
+    {
+        $checkIn = Carbon::today()->toDateString();
+        $checkOut = Carbon::today()->addDays(1)->toDateString();
+
+        $bookingRes = $this->actingAs($this->customer)
+            ->postJson('/api/v1/bookings', [
+                'room_type_id' => $this->roomType->id,
+                'check_in_date' => $checkIn,
+                'check_out_date' => $checkOut,
+                'total_adults' => 1,
+                'payment_method' => 'cash',
+            ]);
+
+        $bookingRes->assertStatus(201);
+        $bookingId = $bookingRes->json('data.id');
+        $booking = Booking::with('latestPayment')->findOrFail($bookingId);
+
+        $frontDeskStaff = User::factory()->create(['role' => 'admin']);
+
+        $room = \App\Models\Room::create([
+            'room_type_id' => $this->roomType->id,
+            'room_number' => '104',
+            'floor' => 1,
+            'status' => 'available',
+        ]);
+
+        $checkInRes = $this->actingAs($frontDeskStaff)
+            ->postJson("/api/v1/admin/bookings/{$bookingId}/check-in", [
+                'room_id' => $room->id,
+                'offline_payment_method' => 'qris',
+                'bank' => 'bca',
+                'card_reference' => 'RRN-998811',
+            ]);
+
+        $checkInRes->assertStatus(200)
+            ->assertJsonPath('success', true);
+
+        $booking->latestPayment->refresh();
+        $this->assertEquals('PAID', $booking->latestPayment->status);
+        $this->assertEquals('qris_bca', $booking->latestPayment->payment_type);
+        $this->assertEquals('RRN-998811', $booking->latestPayment->transaction_id);
+        $this->assertEquals('settled_at_front_desk', $booking->latestPayment->provider_status);
+
+        $history = \App\Models\BookingStatusHistory::where('booking_id', $booking->id)
+            ->where('new_status', Booking::STATUS_CHECKED_IN)
+            ->first();
+        $this->assertNotNull($history);
+        $this->assertStringContainsString('QRIS BCA (EDC)', $history->note);
+    }
 }

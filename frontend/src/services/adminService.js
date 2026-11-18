@@ -80,8 +80,9 @@ export const adminService = {
     return await api.get(`/admin/bookings/${bookingId}/available-rooms`);
   },
 
-  async checkInGuest(bookingId, roomId) {
-    return await api.post(`/admin/bookings/${bookingId}/check-in`, { room_id: roomId });
+  async checkInGuest(bookingId, payload) {
+    const data = typeof payload === 'object' && payload !== null ? payload : { room_id: payload };
+    return await api.post(`/admin/bookings/${bookingId}/check-in`, data);
   },
 
   async checkOutGuest(bookingId) {

@@ -323,23 +323,35 @@ class HotelBookingController extends Controller
     }
 
     /**
-     * Admin: Check In guest & assign room.
+     * Admin & Front Desk: Check In guest & assign room.
      */
     public function checkIn(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
             'room_id' => 'required|exists:rooms,id',
+            'offline_payment_method' => 'nullable|in:cash,qris,debit_card,credit_card',
+            'bank' => 'nullable|in:bca,bri,btn,mandiri,other',
+            'card_reference' => 'nullable|string|max:100',
         ]);
 
         $booking = Booking::findOrFail($id);
 
         try {
-            $updated = $this->bookingService->checkIn($booking, (int) $validated['room_id'], $request->user());
+            $updated = $this->bookingService->checkIn(
+                $booking,
+                (int) $validated['room_id'],
+                $request->user(),
+                [
+                    'payment_method' => $validated['offline_payment_method'] ?? 'cash',
+                    'bank' => $validated['bank'] ?? null,
+                    'card_reference' => $validated['card_reference'] ?? null,
+                ]
+            );
 
             return response()->json([
                 'success' => true,
                 'message' => 'Tamu berhasil check-in ke kamar.',
-                'data' => $updated->load(['roomType', 'assignedRoom']),
+                'data' => $updated->load(['roomType', 'assignedRoom', 'latestPayment']),
             ]);
         } catch (Exception $e) {
             return response()->json([
