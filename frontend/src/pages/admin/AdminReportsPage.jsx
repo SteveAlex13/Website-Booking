@@ -90,95 +90,217 @@ export default function AdminReportsPage() {
 
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Ringkasan Finansial & Bentuk Uang Masuk
+    const IDR_FORMAT = '"Rp "#,##0';
+    const NUM_FORMAT = '#,##0';
+    const PCT_FORMAT = '0.0%';
+
+    // ==========================================
+    // SHEET 1: RINGKASAN EKSEKUTIF & ARUS KAS
+    // ==========================================
     const channels = reportData.payment_channels || {};
-    const summaryData = [
-      ['LAPORAN FINANSIAL & REKAPITULASI PENDAPATAN HOTEL'],
-      ['The Royal Nusantara Resort & Luxury Suites'],
+    const cash = channels.cash || { total_amount: 0, count: 0, percentage: 0 };
+    const qris = channels.qris || { total_amount: 0, count: 0, percentage: 0, banks: {} };
+    const debit = channels.debit_card || { total_amount: 0, count: 0, percentage: 0, banks: {} };
+    const credit = channels.credit_card || { total_amount: 0, count: 0, percentage: 0, banks: {} };
+    const midtrans = channels.midtrans || { total_amount: 0, count: 0, percentage: 0 };
+
+    const frontDeskTrx = (cash.count || 0) + (qris.count || 0) + (debit.count || 0) + (credit.count || 0);
+    const avgRevenue =
+      reportData.total_bookings > 0
+        ? Math.round(Number(reportData.total_revenue || 0) / Number(reportData.total_bookings || 1))
+        : 0;
+
+    const summaryAoa = [
+      ['HOTEL THE ROYAL NUSANTARA RESORT & SPA'],
+      ['LAPORAN KEUANGAN & REKAPITULASI ARUS KAS MASUK'],
+      ['Front Desk Property Management System (PMS) Financial Ledger'],
       [],
-      ['Periode Laporan:', `${reportData.start_date} s/d ${reportData.end_date}`],
-      ['Tanggal Cetak:', new Date().toLocaleString('id-ID')],
+      ['Periode Laporan:', `${reportData.start_date} s/d ${reportData.end_date}`, '', 'Status Dokumen:', 'Terverifikasi (Sistem Kasir & Online)'],
+      ['Tanggal Cetak:', new Date().toLocaleString('id-ID'), '', 'Mata Uang:', 'IDR (Indonesian Rupiah)'],
+      ['Entitas Pelapor:', 'Divisi Finance & Front Desk', '', 'Total Entri Booking:', `${Number(reportData.total_bookings || 0)} Reservasi`],
       [],
-      ['RINGKASAN UTAMA'],
-      ['Indikator', 'Nilai'],
-      ['Total Pendapatan Terverifikasi (IDR)', Number(reportData.total_revenue || 0)],
-      ['Total Reservasi Masuk', Number(reportData.total_bookings || 0)],
+      ['1. INDIKATOR KINERJA FINANSIAL (EXECUTIVE KPI OVERVIEW)'],
+      ['Indikator Finansial', 'Nilai Capaian', 'Satuan / Keterangan Operasional'],
+      ['Total Pendapatan Terverifikasi', Number(reportData.total_revenue || 0), 'Akumulasi seluruh transaksi settlement/lunas'],
+      ['Total Reservasi Masuk', Number(reportData.total_bookings || 0), 'Total booking tamu terdata pada periode ini'],
+      ['Rata-rata Pendapatan per Reservasi (ADR)', avgRevenue, 'Rata-rata nilai transaksi bruto per reservasi tamu'],
+      ['Total Transaksi Front Desk (Tunai & EDC)', frontDeskTrx, 'Total transaksi pelunasan fisik kasir saat tamu check-in'],
+      ['Total Transaksi Online (Midtrans Gateway)', Number(midtrans.count || 0), 'Total transaksi pelunasan otomatis melalui website'],
       [],
-      ['RINCIAN BENTUK UANG MASUK (PAYMENT INFLOWS)'],
-      ['Bentuk Uang / Kanal Pembayaran', 'Total Nominal (IDR)', 'Jumlah Transaksi', 'Persentase (%)', 'Rincian / Keterangan'],
+      ['2. REKAPITULASI BENTUK UANG MASUK (PAYMENT INFLOWS BREAKDOWN)'],
+      ['Kanal Pembayaran', 'Metode / Instansi', 'Jumlah Trx', 'Kontribusi', 'Total Nominal (IDR)', 'Rincian Operasional & Catatan Rekonsiliasi'],
       [
-        'Uang Tunai (Cash Front Desk)',
-        Number(channels.cash?.total_amount || 0),
-        Number(channels.cash?.count || 0),
-        `${channels.cash?.percentage || 0}%`,
-        'Pelunasan tunai fisik di Front Desk saat tamu Check-In',
+        'Uang Tunai (Cash)',
+        'Front Desk Kasir Fisik',
+        Number(cash.count || 0),
+        Number(cash.percentage || 0) / 100,
+        Number(cash.total_amount || 0),
+        'Pelunasan tunai fisik langsung di kasir saat tamu Check-In'
       ],
       [
         'QRIS (Mesin EDC)',
-        Number(channels.qris?.total_amount || 0),
-        Number(channels.qris?.count || 0),
-        `${channels.qris?.percentage || 0}%`,
-        `BCA: Rp ${(channels.qris?.banks?.bca || 0).toLocaleString('id-ID')} | BRI: Rp ${(channels.qris?.banks?.bri || 0).toLocaleString('id-ID')} | BTN: Rp ${(channels.qris?.banks?.btn || 0).toLocaleString('id-ID')} | Mandiri: Rp ${(channels.qris?.banks?.mandiri || 0).toLocaleString('id-ID')}`,
+        'EDC Bank Mitra',
+        Number(qris.count || 0),
+        Number(qris.percentage || 0) / 100,
+        Number(qris.total_amount || 0),
+        `BCA: Rp ${(qris.banks?.bca || 0).toLocaleString('id-ID')} | BRI: Rp ${(qris.banks?.bri || 0).toLocaleString('id-ID')} | BTN: Rp ${(qris.banks?.btn || 0).toLocaleString('id-ID')} | Mandiri: Rp ${(qris.banks?.mandiri || 0).toLocaleString('id-ID')}`
       ],
       [
-        'Kartu Debit (Mesin EDC)',
-        Number(channels.debit_card?.total_amount || 0),
-        Number(channels.debit_card?.count || 0),
-        `${channels.debit_card?.percentage || 0}%`,
-        `BCA: Rp ${(channels.debit_card?.banks?.bca || 0).toLocaleString('id-ID')} | BRI: Rp ${(channels.debit_card?.banks?.bri || 0).toLocaleString('id-ID')} | BTN: Rp ${(channels.debit_card?.banks?.btn || 0).toLocaleString('id-ID')} | Mandiri: Rp ${(channels.debit_card?.banks?.mandiri || 0).toLocaleString('id-ID')}`,
+        'Kartu Debit (EDC)',
+        'EDC Bank Mitra',
+        Number(debit.count || 0),
+        Number(debit.percentage || 0) / 100,
+        Number(debit.total_amount || 0),
+        `BCA: Rp ${(debit.banks?.bca || 0).toLocaleString('id-ID')} | BRI: Rp ${(debit.banks?.bri || 0).toLocaleString('id-ID')} | BTN: Rp ${(debit.banks?.btn || 0).toLocaleString('id-ID')} | Mandiri: Rp ${(debit.banks?.mandiri || 0).toLocaleString('id-ID')}`
       ],
       [
-        'Kartu Kredit (Mesin EDC)',
-        Number(channels.credit_card?.total_amount || 0),
-        Number(channels.credit_card?.count || 0),
-        `${channels.credit_card?.percentage || 0}%`,
-        `BCA: Rp ${(channels.credit_card?.banks?.bca || 0).toLocaleString('id-ID')} | BRI: Rp ${(channels.credit_card?.banks?.bri || 0).toLocaleString('id-ID')} | BTN: Rp ${(channels.credit_card?.banks?.btn || 0).toLocaleString('id-ID')} | Mandiri: Rp ${(channels.credit_card?.banks?.mandiri || 0).toLocaleString('id-ID')}`,
+        'Kartu Kredit (EDC)',
+        'EDC Bank Mitra',
+        Number(credit.count || 0),
+        Number(credit.percentage || 0) / 100,
+        Number(credit.total_amount || 0),
+        `BCA: Rp ${(credit.banks?.bca || 0).toLocaleString('id-ID')} | BRI: Rp ${(credit.banks?.bri || 0).toLocaleString('id-ID')} | BTN: Rp ${(credit.banks?.btn || 0).toLocaleString('id-ID')} | Mandiri: Rp ${(credit.banks?.mandiri || 0).toLocaleString('id-ID')}`
       ],
       [
         'Midtrans Online Gateway',
-        Number(channels.midtrans?.total_amount || 0),
-        Number(channels.midtrans?.count || 0),
-        `${channels.midtrans?.percentage || 0}%`,
-        'Transaksi otomatis website (QRIS Snap, Virtual Account, GoPay)',
+        'Payment Gateway Otomatis',
+        Number(midtrans.count || 0),
+        Number(midtrans.percentage || 0) / 100,
+        Number(midtrans.total_amount || 0),
+        'Transaksi terverifikasi otomatis website (QRIS Snap, GoPay, VA Bank, Kartu Online)'
       ],
+      [
+        'TOTAL ARUS KAS MASUK',
+        'Seluruh Kanal Pembayaran',
+        { f: 'SUM(C19:C23)' },
+        { f: 'SUM(D19:D23)' },
+        { f: 'SUM(E19:E23)' },
+        'Akumulasi 100% arus dana terverifikasi pada periode terpilih'
+      ],
+      [],
+      ['3. RINCIAN PENERIMAAN MESIN EDC PER BANK MITRA'],
+      ['Nama Bank Mitra EDC', 'QRIS EDC (IDR)', 'Kartu Debit (IDR)', 'Kartu Kredit (IDR)', 'Total Penerimaan EDC (IDR)'],
+      [
+        'Bank Central Asia (BCA)',
+        Number(qris.banks?.bca || 0),
+        Number(debit.banks?.bca || 0),
+        Number(credit.banks?.bca || 0),
+        { f: 'SUM(B28:D28)' }
+      ],
+      [
+        'Bank Rakyat Indonesia (BRI)',
+        Number(qris.banks?.bri || 0),
+        Number(debit.banks?.bri || 0),
+        Number(credit.banks?.bri || 0),
+        { f: 'SUM(B29:D29)' }
+      ],
+      [
+        'Bank Tabungan Negara (BTN)',
+        Number(qris.banks?.btn || 0),
+        Number(debit.banks?.btn || 0),
+        Number(credit.banks?.btn || 0),
+        { f: 'SUM(B30:D30)' }
+      ],
+      [
+        'Bank Mandiri',
+        Number(qris.banks?.mandiri || 0),
+        Number(debit.banks?.mandiri || 0),
+        Number(credit.banks?.mandiri || 0),
+        { f: 'SUM(B31:D31)' }
+      ],
+      [
+        'TOTAL PENERIMAAN EDC',
+        { f: 'SUM(B28:B31)' },
+        { f: 'SUM(C28:C31)' },
+        { f: 'SUM(D28:D31)' },
+        { f: 'SUM(E28:E31)' }
+      ],
+      [],
+      ['* Dokumen ini digenerate secara otomatis oleh sistem PMS The Royal Nusantara Resort & Spa. Seluruh data diverifikasi sesuai mutasi pembukuan kasir & gateway.']
     ];
 
-    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoa);
+
+    // Formatting KPI numbers
+    if (wsSummary['B11']) { wsSummary['B11'].z = IDR_FORMAT; wsSummary['B11'].t = 'n'; }
+    if (wsSummary['B12']) { wsSummary['B12'].z = NUM_FORMAT; wsSummary['B12'].t = 'n'; }
+    if (wsSummary['B13']) { wsSummary['B13'].z = IDR_FORMAT; wsSummary['B13'].t = 'n'; }
+    if (wsSummary['B14']) { wsSummary['B14'].z = NUM_FORMAT; wsSummary['B14'].t = 'n'; }
+    if (wsSummary['B15']) { wsSummary['B15'].z = NUM_FORMAT; wsSummary['B15'].t = 'n'; }
+
+    // Formatting Inflows Table
+    for (let r = 19; r <= 24; r++) {
+      const cCell = wsSummary['C' + r];
+      const dCell = wsSummary['D' + r];
+      const eCell = wsSummary['E' + r];
+      if (cCell) { cCell.z = NUM_FORMAT; cCell.t = 'n'; }
+      if (dCell) { dCell.z = PCT_FORMAT; dCell.t = 'n'; }
+      if (eCell) { eCell.z = IDR_FORMAT; eCell.t = 'n'; }
+    }
+
+    // Formatting EDC Table
+    for (let r = 28; r <= 32; r++) {
+      ['B', 'C', 'D', 'E'].forEach((col) => {
+        const cell = wsSummary[col + r];
+        if (cell) { cell.z = IDR_FORMAT; cell.t = 'n'; }
+      });
+    }
+
     wsSummary['!cols'] = [
-      { wch: 32 },
-      { wch: 24 },
-      { wch: 18 },
+      { wch: 34 },
+      { wch: 28 },
       { wch: 16 },
-      { wch: 70 },
+      { wch: 16 },
+      { wch: 25 },
+      { wch: 72 }
     ];
+
+    wsSummary['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
+      { s: { r: 8, c: 0 }, e: { r: 8, c: 2 } },
+      { s: { r: 16, c: 0 }, e: { r: 16, c: 5 } },
+      { s: { r: 25, c: 0 }, e: { r: 25, c: 4 } },
+      { s: { r: 33, c: 0 }, e: { r: 33, c: 5 } }
+    ];
+
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan Finansial');
 
-    // Sheet 2: Rincian Transaksi Reservasi
-    const bookingsRows = [
+    // ==========================================
+    // SHEET 2: BUKU BESAR RESERVASI
+    // ==========================================
+    const bookingsAoa = [
+      ['HOTEL THE ROYAL NUSANTARA RESORT & SPA'],
+      ['BUKU BESAR RINCIAN TRANSAKSI RESERVASI HOTEL'],
+      [`Periode: ${reportData.start_date} s/d ${reportData.end_date} | Entitas: Front Desk & Online Gateway`],
+      [],
       [
         'No',
         'Kode Booking',
         'Tanggal Order',
         'Nama Tamu',
         'Email Tamu',
-        'No. Telepon',
-        'Tipe Kamar',
-        'Check-In',
-        'Check-Out',
+        'No. Telepon / WA',
+        'Tipe Kamar / Layanan',
+        'No. Kamar Fisik',
+        'Tanggal Check-In',
+        'Tanggal Check-Out',
         'Durasi (Malam)',
-        'Total Nominal (IDR)',
+        'Total Biaya (IDR)',
         'Metode Reservasi',
-        'Bentuk Uang / Kanal EDC',
+        'Bentuk Pelunasan / EDC',
         'No. Referensi / RRN',
-        'Status Reservasi',
-      ],
+        'Status Reservasi'
+      ]
     ];
 
-    (reportData.bookings || []).forEach((b, idx) => {
+    const bookingsList = reportData.bookings || [];
+    bookingsList.forEach((b, idx) => {
       const payment = b.latest_payment || b.latestPayment;
       const pType = (payment?.payment_type || '').toLowerCase();
       const isPaid = payment?.status === 'PAID';
-      let methodText = b.payment_method === 'cash' ? 'Bayar di Tempat' : 'Midtrans Online';
+      let methodText = b.payment_method === 'cash' ? 'Bayar di Tempat (Kasir)' : 'Midtrans Online';
       let detailText = '-';
 
       if (b.payment_method === 'cash') {
@@ -187,7 +309,7 @@ export default function AdminReportsPage() {
           else if (pType.startsWith('qris_')) detailText = `QRIS ${pType.replace('qris_', '').toUpperCase()} (EDC)`;
           else if (pType.startsWith('debit_')) detailText = `Debit ${pType.replace('debit_', '').toUpperCase()} (EDC)`;
           else if (pType.startsWith('credit_')) detailText = `CC ${pType.replace('credit_', '').toUpperCase()} (EDC)`;
-          else detailText = pType.toUpperCase();
+          else detailText = `${pType.toUpperCase()} (EDC)`;
         } else {
           detailText = 'Menunggu Pelunasan Check-In';
         }
@@ -195,46 +317,227 @@ export default function AdminReportsPage() {
         detailText = (pType || 'Midtrans Snap').toUpperCase();
       }
 
-      bookingsRows.push([
+      const assignedRoomNumber = b.assigned_room?.room_number || b.assignedRoom?.room_number || 'Belum Di-assign';
+      const statusLabel =
+        BOOKING_STATUS_CONFIG[b.status]?.label ||
+        (b.status === 'CONFIRMED'
+          ? 'Terkonfirmasi'
+          : b.status === 'CHECKED_IN'
+          ? 'Sedang Menginap'
+          : b.status === 'CHECKED_OUT'
+          ? 'Selesai (Check-Out)'
+          : b.status === 'CANCELLED'
+          ? 'Dibatalkan'
+          : b.status === 'EXPIRED'
+          ? 'Hangus / Expired'
+          : b.status);
+
+      bookingsAoa.push([
         idx + 1,
         b.booking_code,
         formatDateTime(b.created_at),
         b.customer_name || '-',
         b.customer_email || b.user?.email || '-',
-        b.customer_phone || '-',
+        b.customer_phone || b.user?.phone || '-',
         b.room_type?.name || b.service_name || '-',
+        assignedRoomNumber,
         b.check_in_date || '-',
         b.check_out_date || '-',
-        b.total_nights || 1,
+        Number(b.total_nights || 1),
         Number(b.total_amount || 0),
         methodText,
         detailText,
-        payment?.transaction_id || '-',
-        BOOKING_STATUS_CONFIG[b.status]?.label || b.status,
+        payment?.transaction_id || payment?.order_id || '-',
+        statusLabel
       ]);
     });
 
-    const wsBookings = XLSX.utils.aoa_to_sheet(bookingsRows);
-    wsBookings['!cols'] = [
-      { wch: 6 },
-      { wch: 18 },
-      { wch: 20 },
-      { wch: 22 },
-      { wch: 25 },
-      { wch: 16 },
-      { wch: 26 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 20 },
-      { wch: 18 },
-      { wch: 25 },
-      { wch: 22 },
-      { wch: 20 },
-    ];
-    XLSX.utils.book_append_sheet(wb, wsBookings, 'Rincian Reservasi');
+    const headerRowIdx = 5;
+    const lastDataRowIdx = headerRowIdx + bookingsList.length;
 
-    const filename = `Laporan_Finansial_${reportData.start_date}_sd_${reportData.end_date}.xlsx`;
+    if (bookingsList.length > 0) {
+      bookingsAoa.push([
+        'TOTAL AKUMULASI PERIODE',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        { f: `SUM(K6:K${lastDataRowIdx})` },
+        { f: `SUM(L6:L${lastDataRowIdx})` },
+        '',
+        '',
+        '',
+        ''
+      ]);
+    }
+
+    const wsBookings = XLSX.utils.aoa_to_sheet(bookingsAoa);
+
+    // Formatting data cells
+    for (let r = 6; r <= lastDataRowIdx; r++) {
+      const noCell = wsBookings['A' + r];
+      const nightsCell = wsBookings['K' + r];
+      const amountCell = wsBookings['L' + r];
+      if (noCell) { noCell.z = NUM_FORMAT; noCell.t = 'n'; }
+      if (nightsCell) { nightsCell.z = NUM_FORMAT; nightsCell.t = 'n'; }
+      if (amountCell) { amountCell.z = IDR_FORMAT; amountCell.t = 'n'; }
+    }
+
+    // Formatting total row
+    if (bookingsList.length > 0) {
+      const totalRow = lastDataRowIdx + 1;
+      const nightsTot = wsBookings['K' + totalRow];
+      const amountTot = wsBookings['L' + totalRow];
+      if (nightsTot) { nightsTot.z = NUM_FORMAT; nightsTot.t = 'n'; }
+      if (amountTot) { amountTot.z = IDR_FORMAT; amountTot.t = 'n'; }
+    }
+
+    wsBookings['!cols'] = [
+      { wch: 6 },  // A: No
+      { wch: 18 }, // B: Kode Booking
+      { wch: 22 }, // C: Tanggal Order
+      { wch: 24 }, // D: Nama Tamu
+      { wch: 28 }, // E: Email
+      { wch: 18 }, // F: No Telepon
+      { wch: 28 }, // G: Tipe Kamar
+      { wch: 18 }, // H: No Kamar Fisik
+      { wch: 15 }, // I: Check-In
+      { wch: 15 }, // J: Check-Out
+      { wch: 15 }, // K: Durasi
+      { wch: 22 }, // L: Total Biaya
+      { wch: 24 }, // M: Metode Reservasi
+      { wch: 26 }, // N: Bentuk Pelunasan
+      { wch: 26 }, // O: No Referensi
+      { wch: 22 }  // P: Status
+    ];
+
+    wsBookings['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 15 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 15 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 15 } }
+    ];
+
+    if (bookingsList.length > 0) {
+      wsBookings['!merges'].push({
+        s: { r: lastDataRowIdx, c: 0 },
+        e: { r: lastDataRowIdx, c: 9 }
+      });
+      wsBookings['!autofilter'] = { ref: `A5:P${lastDataRowIdx}` };
+    }
+
+    XLSX.utils.book_append_sheet(wb, wsBookings, 'Buku Besar Reservasi');
+
+    // ==========================================
+    // SHEET 3: STATISTIK KAMAR & LAYANAN
+    // ==========================================
+    const topServices = reportData.top_services || reportData.top_room_types || [];
+    const totalServiceBookings = topServices.reduce(
+      (acc, curr) => acc + (Number(curr.bookings_count) || 0),
+      0
+    );
+
+    const servicesAoa = [
+      ['HOTEL THE ROYAL NUSANTARA RESORT & SPA'],
+      ['STATISTIK POPULARITAS TIPE KAMAR & LAYANAN TAMBAHAN'],
+      [`Periode: ${reportData.start_date} s/d ${reportData.end_date}`],
+      [],
+      [
+        'Peringkat',
+        'Nama Tipe Kamar / Layanan',
+        'Tarif Satuan (IDR)',
+        'Frekuensi Pemesanan',
+        'Estimasi Kontribusi Omset (IDR)',
+        'Pangsa Pemesanan (%)'
+      ]
+    ];
+
+    topServices.forEach((svc, idx) => {
+      const count = Number(svc.bookings_count || 0);
+      const price = Number(svc.price || 0);
+      const estRevenue = count * price;
+      const share = totalServiceBookings > 0 ? count / totalServiceBookings : 0;
+
+      servicesAoa.push([
+        idx + 1,
+        svc.name || '-',
+        price,
+        count,
+        estRevenue,
+        share
+      ]);
+    });
+
+    const svcLastDataRow = 5 + topServices.length;
+    if (topServices.length > 0) {
+      servicesAoa.push([
+        'TOTAL AKUMULASI LAYANAN',
+        '',
+        '',
+        { f: `SUM(D6:D${svcLastDataRow})` },
+        { f: `SUM(E6:E${svcLastDataRow})` },
+        { f: `SUM(F6:F${svcLastDataRow})` }
+      ]);
+    }
+
+    const wsServices = XLSX.utils.aoa_to_sheet(servicesAoa);
+
+    // Formatting cells
+    for (let r = 6; r <= svcLastDataRow; r++) {
+      const rankCell = wsServices['A' + r];
+      const priceCell = wsServices['C' + r];
+      const countCell = wsServices['D' + r];
+      const estCell = wsServices['E' + r];
+      const shareCell = wsServices['F' + r];
+
+      if (rankCell) { rankCell.z = NUM_FORMAT; rankCell.t = 'n'; }
+      if (priceCell) { priceCell.z = IDR_FORMAT; priceCell.t = 'n'; }
+      if (countCell) { countCell.z = NUM_FORMAT; countCell.t = 'n'; }
+      if (estCell) { estCell.z = IDR_FORMAT; estCell.t = 'n'; }
+      if (shareCell) { shareCell.z = PCT_FORMAT; shareCell.t = 'n'; }
+    }
+
+    if (topServices.length > 0) {
+      const totalRow = svcLastDataRow + 1;
+      const countTot = wsServices['D' + totalRow];
+      const estTot = wsServices['E' + totalRow];
+      const shareTot = wsServices['F' + totalRow];
+
+      if (countTot) { countTot.z = NUM_FORMAT; countTot.t = 'n'; }
+      if (estTot) { estTot.z = IDR_FORMAT; estTot.t = 'n'; }
+      if (shareTot) { shareTot.z = PCT_FORMAT; shareTot.t = 'n'; }
+
+      wsServices['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
+        { s: { r: svcLastDataRow, c: 0 }, e: { r: svcLastDataRow, c: 2 } }
+      ];
+      wsServices['!autofilter'] = { ref: `A5:F${svcLastDataRow}` };
+    } else {
+      wsServices['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }
+      ];
+    }
+
+    wsServices['!cols'] = [
+      { wch: 12 },
+      { wch: 35 },
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 30 },
+      { wch: 22 }
+    ];
+
+    XLSX.utils.book_append_sheet(wb, wsServices, 'Performa Layanan & Kamar');
+
+    const filename = `Laporan_Keuangan_Hotel_${reportData.start_date}_sd_${reportData.end_date}.xlsx`;
     XLSX.writeFile(wb, filename);
   };
 

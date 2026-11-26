@@ -231,9 +231,26 @@ Semua pembaruan, penambahan fitur, perbaikan bug, dan optimasi pada sistem **The
   - Menghapus tab filter status `REFUND_PENDING` dan `REFUNDED` dari deretan tab status.
   - Menghapus komponen modal konfirmasi refund (`ConfirmModal`) dan seluruh state pendukungnya.
 
+### 22. 📑 Format Ekspor Excel Profesional Standar PMS Bintang Lima (Multi-Sheet Ledger)
+- **Deskripsi:** Memperbarui fungsi ekspor ke format Microsoft Excel (`.xlsx`) pada [`AdminReportsPage.jsx`](frontend/src/pages/admin/AdminReportsPage.jsx) agar menghasilkan dokumen pembukuan finansial hotel yang eksekutif, rapi, dan berstandar akuntansi resmi.
+- **Pembaruan Arsitektur Dokumen Excel (3 Lembar Kerja / Sheets):**
+  1. **Sheet 1: `Ringkasan Finansial` (Executive Financial & Inflow Summary)**:
+     - **Kop Surat Resmi Hotel:** Header formal *THE ROYAL NUSANTARA RESORT & SPA*, judul dokumen, subtitle PMS Financial Ledger, dan blok metadata audit (periode tanggal, tanggal cetak, status dokumen, dan mata uang).
+     - **Tabel I (Executive KPI):** Total pendapatan terverifikasi (format akuntansi `"Rp "#,##0`), total booking (`#,##0`), rata-rata pendapatan per reservasi (ADR), akumulasi transaksi kasir Front Desk, dan transaksi online Midtrans.
+     - **Tabel II (Payment Inflows Breakdown):** Rekapitulasi lengkap 5 kanal penerimaan (*Tunai Kasir*, *QRIS EDC*, *Debit EDC*, *Kredit EDC*, *Midtrans Gateway*) dengan formula otomatis `=SUM(...)` untuk volume transaksi, persentase (`0.0%`), dan total nominal rupiah.
+     - **Tabel III (Rincian EDC Per Bank Mitra):** Matriks distribusi pendapatan EDC untuk BCA, BRI, BTN, dan Bank Mandiri lengkap dengan baris subtotal formula.
+  2. **Sheet 2: `Buku Besar Reservasi` (Detailed Reservation Ledger)**:
+     - **16 Kolom Terstruktur:** `No`, `Kode Booking`, `Tanggal Order`, `Nama Tamu`, `Email Tamu`, `No. Telepon / WA`, `Tipe Kamar / Layanan`, `No. Kamar Fisik`, `Tanggal Check-In`, `Tanggal Check-Out`, `Durasi (Malam)`, `Total Biaya (IDR)`, `Metode Reservasi`, `Bentuk Pelunasan / EDC`, `No. Referensi / RRN`, dan `Status Reservasi`.
+     - **Formatting Akuntansi:** Seluruh durasi diformat angka `#,##0`, total biaya diformat Rupiah `"Rp "#,##0`.
+     - **Baris Total Akumulasi:** Menggunakan formula `=SUM(...)` dinamis untuk menghitung total malam kamar dan total nominal uang masuk.
+     - **Fitur Interaktif:** Dilengkapi Auto-Filter (`!autofilter`) aktif pada seluruh kolom dan lebar kolom proporsional (`!cols`) agar data tidak terpotong.
+  3. **Sheet 3: `Performa Layanan & Kamar` (Product & Room Type Performance)**:
+     - **Matriks Popularitas Kamar & Layanan:** Tabel pemeringkatan tipe kamar dan add-on terlaris beserta tarif satuan, frekuensi pemesanan, estimasi kontribusi omset, dan pangsa pemesanan (*market share %*).
+     - **Baris Ringkasan:** Formula akumulasi total frekuensi pemesanan dan total estimasi kontribusi omset.
+
 ---
 
 ## 🧪 Status Verifikasi Pengujian
-- **Backend Tests:** **90 test / 423 assertions lolos (100% Passed)** melalui PHPUnit.
-- **Frontend Build:** **Vite build lolos tanpa error (1.30s)**.
+- **Backend Tests:** **92 test / 437 assertions lolos (100% Passed)** melalui PHPUnit.
+- **Frontend Build:** **Vite build lolos tanpa error (1.09s)**.
 
