@@ -4,7 +4,10 @@ import { bookingService } from '../../services/bookingService';
 import { paymentService } from '../../services/paymentService';
 import { useToast } from '../../contexts/ToastContext';
 import ConfirmModal from '../../components/common/ConfirmModal';
-import { formatRupiah, formatDate, BOOKING_STATUS_CONFIG } from '../../utils/format';
+import InvoiceModal from '../../components/common/InvoiceModal';
+import QrisDownloadModal from '../../components/common/QrisDownloadModal';
+import PaymentConnectionModal from '../../components/common/PaymentConnectionModal';
+import { formatRupiah, formatDate, formatCheckoutTime, BOOKING_STATUS_CONFIG } from '../../utils/format';
 import { loadSnapScript, openSnapModal } from '../../utils/midtrans';
 import {
   Calendar,
@@ -20,6 +23,9 @@ import {
   DoorOpen,
   Coffee,
   Users,
+  FileText,
+  QrCode,
+  Download,
 } from 'lucide-react';
 
 const CANCELLATION_REASONS = [
@@ -80,6 +86,8 @@ export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [filterTab, setFilterTab] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'HISTORY'
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [invoiceBooking, setInvoiceBooking] = useState(null);
+  const [qrisBooking, setQrisBooking] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
 
   // Modal Cancel State
@@ -90,6 +98,8 @@ export default function CustomerDashboardPage() {
 
   // Paying State
   const [payingId, setPayingId] = useState(null);
+  const [networkModal, setNetworkModal] = useState({ open: false, booking: null, message: '' });
+  const [verifyingStatus, setVerifyingStatus] = useState(false);
 
   const fetchBookings = async () => {
     try {
@@ -132,9 +142,29 @@ export default function CustomerDashboardPage() {
   };
 
   const handlePayNow = async (booking) => {
+    // Check connectivity upfront
+    if (!navigator.onLine) {
+      setNetworkModal({
+        open: true,
+        booking,
+        message: 'Perangkat Anda sedang offline. Mohon periksa kembali koneksi data atau Wi-Fi Anda.',
+      });
+      toast.error('Koneksi terputus. Pembayaran belum berhasil diproses.');
+      return;
+    }
+
     setPayingId(booking.id);
     try {
       const checkoutRes = await paymentService.checkout(booking.id);
+
+      // Anti Double-Payment Guarantee: if already verified/paid on Midtrans or database
+      if (checkoutRes.data?.already_paid || checkoutRes.already_paid) {
+        toast.success('Pembayaran Anda sudah berhasil diverifikasi! Sistem mencegah penarikan dana ulang.');
+        const paidPid = checkoutRes.data?.payment_id || booking.latest_payment?.id || booking.id;
+        window.location.href = `/payment-result/${paidPid}`;
+        return;
+      }
+
       const { snap_token, client_key, payment_id } = checkoutRes.data;
 
       const isProduction = import.meta.env.VITE_MIDTRANS_IS_PRODUCTION === 'true';
@@ -155,17 +185,65 @@ export default function CustomerDashboardPage() {
           fetchBookings();
         },
         onError: () => {
-          toast.error('Pembayaran gagal atau dibatalkan.');
+          toast.error('Pembayaran belum berhasil diselesaikan.');
           fetchBookings();
         },
-        onClose: () => {
+        onClose: async () => {
+          // Verify status on close in case payment succeeded during signal glitch
+          try {
+            const checkRes = await paymentService.checkStatus(payment_id);
+            if (checkRes.data?.payment?.status === 'PAID' || checkRes.data?.booking?.status === 'CONFIRMED') {
+              toast.success('Pembayaran Anda sukses terverifikasi!');
+              window.location.href = `/payment-result/${payment_id}`;
+              return;
+            }
+          } catch (e) {}
           fetchBookings();
         },
       });
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Gagal membuka pembayaran Midtrans.');
+      console.error('PayNow error:', err);
+      const isNetworkError =
+        !navigator.onLine ||
+        err.code === 'ECONNABORTED' ||
+        err.message?.includes('Network Error') ||
+        err.message?.includes('timeout') ||
+        !err.response;
+
+      if (isNetworkError) {
+        setNetworkModal({
+          open: true,
+          booking,
+          message: 'Sinyal koneksi internet Anda lemah atau terputus saat memproses checkout pembayaran.',
+        });
+        toast.error('Koneksi terganggu. Pembayaran belum berhasil diverifikasi.');
+      } else {
+        toast.error(err.response?.data?.message || 'Gagal membuka pembayaran Midtrans.');
+      }
     } finally {
       setPayingId(null);
+    }
+  };
+
+  const handleVerifyNetworkPayment = async () => {
+    if (!networkModal.booking) return;
+    setVerifyingStatus(true);
+    try {
+      const pid = networkModal.booking.latest_payment?.id || networkModal.booking.id;
+      if (pid) {
+        const res = await paymentService.checkStatus(pid);
+        if (res.data?.payment?.status === 'PAID' || res.data?.booking?.status === 'CONFIRMED') {
+          toast.success('Hebat! Pembayaran Anda sudah tercatat Lunas di sistem resort.');
+          setNetworkModal({ open: false, booking: null, message: '' });
+          window.location.href = `/payment-result/${pid}`;
+          return;
+        }
+      }
+      toast.info('Status pembayaran saat ini belum tercatat lunas. Anda dapat mencoba bayar lagi dengan aman.');
+    } catch (e) {
+      toast.error('Koneksi internet belum stabil. Silakan periksa kembali jaringan internet Anda.');
+    } finally {
+      setVerifyingStatus(false);
     }
   };
 
@@ -361,7 +439,7 @@ export default function CustomerDashboardPage() {
                     <div className="flex items-center space-x-2">
                       <Calendar className="w-3.5 h-3.5 text-amber-600" />
                       <span className="font-semibold text-slate-800">
-                        {formatDate(b.check_in_date)} — {formatDate(b.check_out_date)}
+                        {formatDate(b.check_in_date)} (14:00) — {formatCheckoutTime(b.check_out_date, b.checked_out_at)}
                       </span>
                       <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-bold">
                         {b.total_nights || 1} Malam
@@ -432,6 +510,15 @@ export default function CustomerDashboardPage() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => setQrisBooking(b)}
+                          className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition flex items-center space-x-1"
+                          title="Unduh Gambar QRIS (PNG)"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Unduh QRIS</span>
+                        </button>
+                        <button
+                          type="button"
                           disabled={payingId === b.id}
                           onClick={() => handlePayNow(b)}
                           className="px-4 py-2 text-xs font-black text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 rounded-xl shadow-md shadow-amber-600/30 transition flex items-center space-x-1.5"
@@ -447,6 +534,19 @@ export default function CustomerDashboardPage() {
                         </button>
                       </>
                     )}
+
+                    {(isConfirmed || isCheckedIn || b.status === 'CHECKED_OUT' || b.status === 'COMPLETED') && (
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceBooking(b)}
+                        className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center space-x-1.5 shadow-sm"
+                        title="Unduh / Cetak Invoice Resmi (PDF)"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="hidden sm:inline">Unduh Invoice</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => setSelectedBooking(b)}
@@ -508,7 +608,9 @@ export default function CustomerDashboardPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 block font-bold uppercase text-[10px]">Check-Out</span>
-                  <span className="font-bold text-slate-900">{formatDate(selectedBooking.check_out_date)} (12:00)</span>
+                  <span className="font-bold text-slate-900">
+                    {formatCheckoutTime(selectedBooking.check_out_date, selectedBooking.checked_out_at)}
+                  </span>
                 </div>
               </div>
 
@@ -569,10 +671,33 @@ export default function CustomerDashboardPage() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center space-x-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setInvoiceBooking(selectedBooking)}
+                  className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 shadow-sm"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Unduh Invoice (PDF)</span>
+                </button>
+
+                {selectedBooking.status === 'PENDING_PAYMENT' && (
+                  <button
+                    type="button"
+                    onClick={() => setQrisBooking(selectedBooking)}
+                    className="flex-1 sm:flex-initial px-4 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 shadow-sm"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Unduh QRIS</span>
+                  </button>
+                )}
+              </div>
+
               <button
+                type="button"
                 onClick={() => setSelectedBooking(null)}
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition"
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition text-center"
               >
                 Tutup Voucher
               </button>
@@ -580,6 +705,40 @@ export default function CustomerDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Invoice Modal */}
+      {invoiceBooking && (
+        <InvoiceModal
+          isOpen={!!invoiceBooking}
+          onClose={() => setInvoiceBooking(null)}
+          booking={invoiceBooking}
+        />
+      )}
+
+      {/* QRIS Download Modal */}
+      {qrisBooking && (
+        <QrisDownloadModal
+          isOpen={!!qrisBooking}
+          onClose={() => setQrisBooking(null)}
+          booking={qrisBooking}
+          grossAmount={qrisBooking?.total_amount}
+        />
+      )}
+
+      {/* Network / Connection Fallback & Anti Double Payment Modal */}
+      <PaymentConnectionModal
+        isOpen={networkModal.open}
+        onClose={() => setNetworkModal({ open: false, booking: null, message: '' })}
+        onRetry={() => {
+          const b = networkModal.booking;
+          setNetworkModal({ open: false, booking: null, message: '' });
+          if (b) handlePayNow(b);
+        }}
+        onCheckStatus={handleVerifyNetworkPayment}
+        checking={verifyingStatus}
+        message={networkModal.message}
+        bookingCode={networkModal.booking?.booking_code}
+      />
     </div>
   );
 }

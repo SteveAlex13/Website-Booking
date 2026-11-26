@@ -162,6 +162,24 @@ class HotelBookingController extends Controller
             'extras.*.quantity' => 'nullable|integer|min:1',
         ]);
 
+        // Idempotency / bad network recovery: if the user already has an active pending booking for the exact same room and dates
+        $existingPending = Booking::where('user_id', $request->user()->id)
+            ->where('room_type_id', $validated['room_type_id'])
+            ->whereDate('check_in_date', $validated['check_in_date'])
+            ->whereDate('check_out_date', $validated['check_out_date'])
+            ->where('status', Booking::STATUS_PENDING_PAYMENT)
+            ->where('expires_at', '>', Carbon::now())
+            ->latest()
+            ->first();
+
+        if ($existingPending) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Melanjutkan reservasi kamar Anda yang sebelumnya tersimpan.',
+                'data' => $existingPending->load(['roomType', 'extraItems', 'discountCoupon', 'latestPayment']),
+            ], 200);
+        }
+
         try {
             $booking = $this->bookingService->createBooking($request->user(), $validated);
 
@@ -375,6 +393,37 @@ class HotelBookingController extends Controller
                 'success' => true,
                 'message' => 'Tamu berhasil check-out. Kamar siap dibersihkan.',
                 'data' => $updated->load(['roomType', 'assignedRoom']),
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Admin & Front Desk: Mark overdue booking as No-Show.
+     */
+    public function markNoShow(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $booking = Booking::findOrFail($id);
+
+        try {
+            $updated = $this->bookingService->markNoShow(
+                $booking,
+                $request->user(),
+                $validated['reason'] ?? null
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Reservasi berhasil ditandai sebagai No-Show.',
+                'data' => $updated->load(['roomType', 'assignedRoom', 'latestPayment']),
             ]);
         } catch (Exception $e) {
             return response()->json([

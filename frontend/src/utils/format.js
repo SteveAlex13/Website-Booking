@@ -55,6 +55,44 @@ export function formatTime(timeString) {
   return timeString.substring(0, 5);
 }
 
+export function formatCheckoutTime(checkoutDate, checkedOutAt = null) {
+  if (!checkoutDate) return '-';
+  const dateFormatted = formatDate(checkoutDate);
+  if (checkedOutAt) {
+    const time = formatTime(checkedOutAt);
+    return `${dateFormatted} (Selesai: ${time} WIB)`;
+  }
+  return `${dateFormatted} (Pukul 12:00 WIB)`;
+}
+
+/**
+ * Menentukan status kesiapan check-in berdasarkan tanggal hari ini vs masa menginap.
+ * Returns:
+ * - 'UPCOMING': Hari ini masih sebelum tanggal check-in (belum waktunya)
+ * - 'ELIGIBLE': Hari ini berada dalam rentang menginap (check_in <= hari ini < check_out)
+ * - 'OVERDUE': Hari ini sudah mencapai atau melewati tanggal check-out (waktu menginap habis)
+ */
+export function getBookingStayStatus(checkInDate, checkOutDate) {
+  if (!checkInDate || !checkOutDate) return 'ELIGIBLE';
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
+
+  const inStr = String(checkInDate).substring(0, 10);
+  const outStr = String(checkOutDate).substring(0, 10);
+
+  if (todayStr >= outStr) {
+    return 'OVERDUE';
+  }
+  if (todayStr < inStr) {
+    return 'UPCOMING';
+  }
+  return 'ELIGIBLE';
+}
+
 export const BOOKING_STATUS_CONFIG = {
   PENDING_PAYMENT: {
     label: 'Menunggu Pembayaran',
@@ -99,10 +137,10 @@ export const BOOKING_STATUS_CONFIG = {
     border: 'border-slate-300',
   },
   NO_SHOW: {
-    label: 'No Show',
-    bg: 'bg-gray-100',
-    text: 'text-gray-600',
-    border: 'border-gray-300',
+    label: 'Hangus',
+    bg: 'bg-rose-50',
+    text: 'text-rose-700',
+    border: 'border-rose-200',
   },
   PAID_NO_SLOT: {
     label: 'Kamar Penuh (Perlu Refund)',

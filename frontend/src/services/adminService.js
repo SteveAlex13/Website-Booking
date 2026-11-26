@@ -89,6 +89,10 @@ export const adminService = {
     return await api.post(`/admin/bookings/${bookingId}/check-out`);
   },
 
+  async markNoShow(bookingId, reason = '') {
+    return await api.post(`/admin/bookings/${bookingId}/no-show`, { reason });
+  },
+
   async cancelBooking(bookingId, { cancellation_key, reason }) {
     return await api.post(`/admin/bookings/${bookingId}/cancel`, { cancellation_key, reason });
   },

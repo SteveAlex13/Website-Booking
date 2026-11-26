@@ -488,6 +488,47 @@ class HotelBookingService
         });
     }
 
+    /**
+     * Mark a confirmed booking as NO_SHOW (guest did not arrive during the stay window).
+     */
+    public function markNoShow(Booking $booking, ?User $admin = null, ?string $reason = null): Booking
+    {
+        return DB::transaction(function () use ($booking, $admin, $reason) {
+            $locked = Booking::where('id', $booking->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== Booking::STATUS_CONFIRMED) {
+                throw new Exception('Hanya reservasi berstatus Terkonfirmasi yang dapat ditandai No-Show.');
+            }
+
+            $oldStatus = $locked->status;
+            $locked->status = Booking::STATUS_NO_SHOW;
+            $locked->save();
+
+            // If there is an uncollected pay-at-hotel payment still PENDING, cancel it
+            $pendingPayment = Payment::where('booking_id', $locked->id)
+                ->where('status', Payment::STATUS_PENDING)
+                ->first();
+
+            if ($pendingPayment) {
+                $pendingPayment->status = Payment::STATUS_CANCELLED;
+                $pendingPayment->save();
+            }
+
+            $actor = $admin ? "oleh staf {$admin->name}" : 'otomatis oleh sistem';
+            $note = $reason ?: "Tamu tidak hadir hingga melewati batas waktu menginap (No-Show {$actor}).";
+
+            BookingStatusHistory::create([
+                'booking_id' => $locked->id,
+                'old_status' => $oldStatus,
+                'new_status' => Booking::STATUS_NO_SHOW,
+                'changed_by' => $admin?->id,
+                'note' => $note,
+            ]);
+
+            return $locked;
+        });
+    }
+
     protected function generateUniqueBookingCode(): string
     {
         $datePrefix = Carbon::now()->format('Ymd');

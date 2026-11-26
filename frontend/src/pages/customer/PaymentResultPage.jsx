@@ -2,8 +2,27 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { paymentService } from '../../services/paymentService';
 import api from '../../services/api';
-import { formatRupiah, formatDate, BOOKING_STATUS_CONFIG } from '../../utils/format';
-import { CheckCircle2, Clock, AlertCircle, AlertTriangle, RefreshCw, ArrowRight, Hotel, Calendar, Banknote } from 'lucide-react';
+import { formatRupiah, formatDate, formatCheckoutTime, BOOKING_STATUS_CONFIG } from '../../utils/format';
+import InvoiceModal from '../../components/common/InvoiceModal';
+import QrisDownloadModal from '../../components/common/QrisDownloadModal';
+import {
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  AlertTriangle,
+  RefreshCw,
+  ArrowRight,
+  Hotel,
+  Calendar,
+  Banknote,
+  FileText,
+  QrCode,
+  Download,
+  Sparkles,
+  Coffee,
+  Tag,
+  Info,
+} from 'lucide-react';
 
 export default function PaymentResultPage() {
   const { paymentId } = useParams();
@@ -13,6 +32,8 @@ export default function PaymentResultPage() {
   const [simulating, setSimulating] = useState(false);
   const [error, setError] = useState('');
   const [timeLeft, setTimeLeft] = useState('');
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [qrisModalOpen, setQrisModalOpen] = useState(false);
 
   const fetchPayment = async () => {
     try {
@@ -130,6 +151,9 @@ export default function PaymentResultPage() {
   // Referencing `booking` before its declaration causes a TDZ ReferenceError
   // and leaves the payment result page completely blank.
   const booking = payment.booking;
+  const extraItems = booking?.extra_items || booking?.extraItems || [];
+  const discountAmount = Number(booking?.discount_amount || 0);
+  const discountCode = booking?.discount_code || '';
   const isPaidNoSlot = payment.status === 'PAID_NO_SLOT' || booking?.status === 'PAID_NO_SLOT';
   const isExpired = payment.status === 'EXPIRED' || booking?.status === 'EXPIRED';
   const isCash = payment.payment_type === 'cash' || String(payment.order_id || '').startsWith('CASH-');
@@ -255,8 +279,9 @@ export default function PaymentResultPage() {
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Periode Menginap:</span>
-            <span className="font-bold text-slate-900">
-              {formatDate(booking?.check_in_date)} — {formatDate(booking?.check_out_date)} ({booking?.total_nights || 1} Malam)
+            <span className="font-bold text-slate-900 text-right">
+              {formatDate(booking?.check_in_date)} (14:00) — {formatCheckoutTime(booking?.check_out_date, booking?.checked_out_at)}
+              <span className="block text-[11px] text-amber-700 font-semibold">({booking?.total_nights || 1} Malam)</span>
             </span>
           </div>
           <div className="flex justify-between">
@@ -267,6 +292,46 @@ export default function PaymentResultPage() {
               {statusCfg.label}
             </span>
           </div>
+
+          {/* Layanan Tambahan (Add-On) yang Dipesan */}
+          {extraItems.length > 0 && (
+            <div className="pt-2.5 pb-1 border-t border-slate-200 space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+                <Coffee className="w-3.5 h-3.5 text-amber-600" />
+                <span>Layanan Tambahan (Add-On) Dipesan:</span>
+              </span>
+              <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200">
+                {extraItems.map((item, idx) => {
+                  const serviceName = item.name || item.service_name || item.extra_service?.name || 'Layanan Tambahan';
+                  const priceType = item.extra_service?.price_type || item.pricing_type;
+                  const typeLabel = priceType === 'per_night' ? `Per Malam x ${booking?.total_nights || 1}` : 'Per Menginap';
+                  return (
+                    <div key={idx} className="flex justify-between items-center text-[11px]">
+                      <span className="text-slate-700 font-medium">
+                        • {serviceName}
+                        <span className="text-[10px] text-slate-400 ml-1 font-normal">
+                          ({typeLabel} • Qty: {item.quantity})
+                        </span>
+                      </span>
+                      <span className="font-bold text-slate-900">{formatRupiah(item.subtotal || item.price * item.quantity)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Potongan Diskon Promo */}
+          {discountAmount > 0 && (
+            <div className="flex justify-between items-center text-emerald-700 font-bold bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200">
+              <span className="flex items-center space-x-1.5 text-xs">
+                <Tag className="w-3.5 h-3.5" />
+                <span>Potongan Diskon Promo ({discountCode}):</span>
+              </span>
+              <span className="text-xs font-black">-{formatRupiah(discountAmount)}</span>
+            </div>
+          )}
+
           <div className="pt-3 border-t border-slate-200 flex justify-between items-center text-sm">
             <span className="font-bold text-slate-700">
               {isCash ? 'Total yang Harus Dibayar:' : 'Total Nominal Lunas:'}
@@ -279,6 +344,30 @@ export default function PaymentResultPage() {
 
         {/* Actions */}
         <div className="space-y-3 pt-2">
+          {/* QRIS Download Button for Pending Payment */}
+          {!isPaid && !isCash && !isExpired && (
+            <button
+              type="button"
+              onClick={() => setQrisModalOpen(true)}
+              className="w-full py-3 px-4 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-700 hover:to-rose-700 text-white font-black rounded-xl shadow-md transition flex items-center justify-center space-x-2 text-xs"
+            >
+              <QrCode className="w-4 h-4" />
+              <span>Tampilkan & Unduh QRIS Pembayaran (PNG)</span>
+            </button>
+          )}
+
+          {/* Invoice Download Button for Paid / Confirmed Booking */}
+          {(isPaid || isCash) && (
+            <button
+              type="button"
+              onClick={() => setInvoiceModalOpen(true)}
+              className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 font-black rounded-xl shadow-md transition flex items-center justify-center space-x-2 text-xs border border-slate-800"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Unduh / Cetak Invoice Resmi (PDF)</span>
+            </button>
+          )}
+
           {!isPaid && !isCash && (
             <div className="flex flex-col sm:flex-row gap-3">
               <button
@@ -315,6 +404,26 @@ export default function PaymentResultPage() {
           </Link>
         </div>
       </div>
+
+      {/* Invoice Modal */}
+      {booking && (
+        <InvoiceModal
+          isOpen={invoiceModalOpen}
+          onClose={() => setInvoiceModalOpen(false)}
+          booking={booking}
+          payment={payment}
+        />
+      )}
+
+      {/* QRIS Download Modal */}
+      {booking && (
+        <QrisDownloadModal
+          isOpen={qrisModalOpen}
+          onClose={() => setQrisModalOpen(false)}
+          booking={booking}
+          grossAmount={payment.gross_amount}
+        />
+      )}
     </div>
   );
 }

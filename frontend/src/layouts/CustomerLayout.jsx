@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link, NavLink, Outlet, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Hotel, User, LogOut, ChevronRight, BedDouble, Calendar, Sparkles } from 'lucide-react';
+import { Hotel, User, LogOut, ChevronRight, BedDouble, Calendar, Sparkles, Shield } from 'lucide-react';
 
 export default function CustomerLayout() {
-  const { user, isAuthenticated, loading, logout } = useAuth();
+  const { user, isAuthenticated, isAdmin, loading, logout } = useAuth();
   const navigate = useNavigate();
 
   if (loading) {
@@ -52,6 +52,15 @@ export default function CustomerLayout() {
             </div>
 
             <div className="flex items-center space-x-4">
+              {isAdmin && (
+                <Link
+                  to="/admin/dashboard"
+                  className="inline-flex items-center space-x-1.5 text-xs font-bold px-3 py-1.5 bg-slate-900 text-amber-400 hover:bg-slate-800 rounded-xl transition shadow-sm"
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Panel Admin</span>
+                </Link>
+              )}
               <Link
                 to="/services"
                 className="hidden sm:inline-flex items-center space-x-1.5 text-xs font-bold px-3.5 py-2 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-xl transition border border-amber-200"

@@ -50,6 +50,51 @@ class PaymentController extends Controller
             ]);
         }
 
+        // Double payment prevention 1: If booking is already confirmed / paid
+        if ($booking->status === Booking::STATUS_CONFIRMED) {
+            $paidPayment = Payment::where('booking_id', $booking->id)
+                ->where('status', Payment::STATUS_PAID)
+                ->latest()
+                ->first();
+
+            return response()->json([
+                'success' => true,
+                'already_paid' => true,
+                'message' => 'Pembayaran untuk reservasi ini telah berhasil diterima. Tidak ada penarikan dana ulang.',
+                'data' => [
+                    'payment_id' => $paidPayment?->id,
+                    'order_id' => $paidPayment?->order_id,
+                    'already_paid' => true,
+                ],
+            ]);
+        }
+
+        // Double payment prevention 2: Reconcile latest pending payment with Midtrans before creating a new checkout
+        $latestPending = Payment::where('booking_id', $booking->id)
+            ->where('status', Payment::STATUS_PENDING)
+            ->latest()
+            ->first();
+
+        if ($latestPending) {
+            try {
+                $syncedPayment = $this->paymentService->checkStatus($latestPending);
+                if ($syncedPayment->status === Payment::STATUS_PAID || $booking->fresh()->status === Booking::STATUS_CONFIRMED) {
+                    return response()->json([
+                        'success' => true,
+                        'already_paid' => true,
+                        'message' => 'Pembayaran Anda sebelumnya telah berhasil terverifikasi di Midtrans! Sistem kami mencegah penarikan dana ganda.',
+                        'data' => [
+                            'payment_id' => $syncedPayment->id,
+                            'order_id' => $syncedPayment->order_id,
+                            'already_paid' => true,
+                        ],
+                    ]);
+                }
+            } catch (Exception $e) {
+                // Ignore midtrans sync failure and proceed with normal checkout
+            }
+        }
+
         try {
             $checkoutData = $this->paymentService->createCheckout($booking);
 

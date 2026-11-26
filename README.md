@@ -1,6 +1,8 @@
-# Service Booking & Payment Management System
+# The Royal Nusantara - Hotel & Resort Management System
 
-Aplikasi pemesanan layanan dan manajemen pembayaran online berbasis web yang dibangun dengan arsitektur modern: **Laravel 12 (PHP 8.4)** sebagai RESTful API backend, **React.js + Vite + Tailwind CSS** sebagai responsive frontend, **MySQL 8** dengan InnoDB atomicity, serta **Midtrans Snap** sebagai payment gateway.
+Aplikasi sistem manajemen reservasi hotel, kamar, dan kasir front desk berbasis web yang dibangun dengan arsitektur modern: **Laravel 12 (PHP 8.4)** sebagai RESTful API backend, **React.js + Vite + Tailwind CSS** sebagai responsive frontend, **MySQL 8** dengan InnoDB atomicity, serta **Midtrans Snap** sebagai payment gateway.
+
+> 📜 **Riwayat Pembaruan & Fitur Baru:** Seluruh log pembaruan dan fitur yang telah ditambahkan dapat dilihat lengkap di file [**`CHANGELOG.md`**](file:///c:/laragon/www/laravel-booking/CHANGELOG.md).
 
 ---
 

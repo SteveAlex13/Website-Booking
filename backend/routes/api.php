@@ -79,6 +79,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/bookings/{id}/available-rooms', [HotelBookingController::class, 'availableRoomsForBooking']);
             Route::post('/bookings/{id}/check-in', [HotelBookingController::class, 'checkIn']);
             Route::post('/bookings/{id}/check-out', [HotelBookingController::class, 'checkOut']);
+            Route::post('/bookings/{id}/no-show', [HotelBookingController::class, 'markNoShow']);
 
             // Guest book (read-only list of registered guests)
             Route::get('/customers', [AdminDashboardController::class, 'customers']);

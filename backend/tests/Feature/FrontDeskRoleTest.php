@@ -331,4 +331,49 @@ class FrontDeskRoleTest extends TestCase
         $this->actingAs($this->staff)->postJson('/api/v1/admin/customers', ['name' => 'X'])->assertStatus(405);
         $this->actingAs($this->staff)->deleteJson('/api/v1/admin/customers/1')->assertStatus(404);
     }
+
+    public function test_staff_can_mark_confirmed_booking_as_no_show(): void
+    {
+        $booking = $this->makeBooking();
+
+        $response = $this->actingAs($this->staff)
+            ->postJson("/api/v1/admin/bookings/{$booking->id}/no-show", [
+                'reason' => 'Tamu tidak hadir sampai lewat jadwal checkout.',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(Booking::STATUS_NO_SHOW, $booking->fresh()->status);
+    }
+
+    public function test_artisan_command_marks_overdue_bookings_as_no_show(): void
+    {
+        $overdueBooking = Booking::create([
+            'booking_code' => 'HTL-TEST-NOSHOW',
+            'user_id' => $this->customer->id,
+            'room_type_id' => $this->roomType->id,
+            'customer_name' => 'Late Guest',
+            'customer_email' => 'late@example.com',
+            'customer_phone' => '08123456789',
+            'check_in_date' => Carbon::now()->subDays(5)->toDateString(),
+            'check_out_date' => Carbon::now()->subDays(4)->toDateString(),
+            'total_nights' => 1,
+            'total_adults' => 2,
+            'total_children' => 0,
+            'room_price_per_night' => 500000,
+            'total_room_amount' => 500000,
+            'total_extras_amount' => 0,
+            'tax_and_service_amount' => 50000,
+            'total_amount' => 550000,
+            'payment_method' => 'pay_at_hotel',
+            'status' => Booking::STATUS_CONFIRMED,
+        ]);
+
+        $this->artisan('bookings:mark-no-show')
+            ->expectsOutputToContain('Berhasil menandai 1 reservasi terlewat menjadi No-Show.')
+            ->assertSuccessful();
+
+        $this->assertSame(Booking::STATUS_NO_SHOW, $overdueBooking->fresh()->status);
+    }
 }

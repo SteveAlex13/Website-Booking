@@ -58,6 +58,7 @@ const PAGE_TITLES = [
   ['/admin/users', 'Kelola User'],
   ['/admin/payments', 'Transaksi Pembayaran'],
   ['/admin/reports', 'Laporan Finansial'],
+  ['/admin/profile', 'Profil Pengguna'],
 ];
 
 function DocumentTitle() {
@@ -102,6 +103,7 @@ export default function App() {
               <Route path="rooms" element={<AdminRoomsPage />} />
               <Route path="bookings" element={<AdminBookingsPage />} />
               <Route path="customers" element={<AdminCustomersPage />} />
+              <Route path="profile" element={<CustomerProfilePage />} />
 
               {/* Super admin only */}
               <Route path="categories" element={<RequireSuperAdmin><AdminCategoriesPage /></RequireSuperAdmin>} />

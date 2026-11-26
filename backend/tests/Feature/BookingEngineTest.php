@@ -533,4 +533,69 @@ class BookingEngineTest extends TestCase
         $this->assertNotNull($history);
         $this->assertStringContainsString('QRIS BCA (EDC)', $history->note);
     }
+
+    public function test_checkout_prevents_double_payment_if_booking_already_confirmed(): void
+    {
+        $checkIn = Carbon::today()->toDateString();
+        $checkOut = Carbon::today()->addDays(1)->toDateString();
+
+        $bookingRes = $this->actingAs($this->customer)
+            ->postJson('/api/v1/bookings', [
+                'room_type_id' => $this->roomType->id,
+                'check_in_date' => $checkIn,
+                'check_out_date' => $checkOut,
+                'total_adults' => 1,
+            ]);
+
+        $bookingId = $bookingRes->json('data.id');
+        $booking = Booking::findOrFail($bookingId);
+
+        // Mark booking as confirmed
+        $booking->update(['status' => Booking::STATUS_CONFIRMED]);
+        \App\Models\Payment::create([
+            'booking_id' => $booking->id,
+            'order_id' => 'ORDER-PAID-TEST',
+            'gross_amount' => $booking->total_amount,
+            'status' => \App\Models\Payment::STATUS_PAID,
+        ]);
+
+        // Attempt checkout again (e.g. guest clicked pay again after signal drop)
+        $checkoutRes = $this->actingAs($this->customer)
+            ->postJson('/api/v1/payments/checkout', [
+                'booking_id' => $booking->id,
+            ]);
+
+        $checkoutRes->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('already_paid', true)
+            ->assertJsonPath('data.already_paid', true);
+    }
+
+    public function test_booking_creation_idempotency_reuses_existing_pending_booking_on_bad_signal_retry(): void
+    {
+        $checkIn = Carbon::today()->addDays(2)->toDateString();
+        $checkOut = Carbon::today()->addDays(3)->toDateString();
+
+        $payload = [
+            'room_type_id' => $this->roomType->id,
+            'check_in_date' => $checkIn,
+            'check_out_date' => $checkOut,
+            'total_adults' => 1,
+        ];
+
+        // First attempt (e.g. connection flickered after server processed)
+        $firstRes = $this->actingAs($this->customer)
+            ->postJson('/api/v1/bookings', $payload);
+
+        $firstRes->assertStatus(201);
+        $firstBookingId = $firstRes->json('data.id');
+
+        // Second attempt (retry with same user & params)
+        $secondRes = $this->actingAs($this->customer)
+            ->postJson('/api/v1/bookings', $payload);
+
+        $secondRes->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.id', $firstBookingId);
+    }
 }

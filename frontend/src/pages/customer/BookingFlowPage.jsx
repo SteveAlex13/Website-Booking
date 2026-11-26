@@ -7,6 +7,7 @@ import { paymentService } from '../../services/paymentService';
 import { useToast } from '../../contexts/ToastContext';
 import { formatRupiah, formatDate, formatRoomCapacity, formatRoomSize } from '../../utils/format';
 import RoomImage from '../../components/common/RoomImage';
+import PaymentConnectionModal from '../../components/common/PaymentConnectionModal';
 import { loadSnapScript, openSnapModal } from '../../utils/midtrans';
 import {
   Calendar,
@@ -76,6 +77,12 @@ export default function BookingFlowPage() {
   const [calculatingPrice, setCalculatingPrice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [isOverbookedModalOpen, setIsOverbookedModalOpen] = useState(false);
+
+  // Network & Double Payment Fallback States
+  const [networkModal, setNetworkModal] = useState({ open: false, booking: null, paymentId: null, message: '' });
+  const [checkingPaymentStatus, setCheckingPaymentStatus] = useState(false);
+  const [lastCreatedBooking, setLastCreatedBooking] = useState(null);
+  const [currentPaymentId, setCurrentPaymentId] = useState(null);
 
   // Fetch Room Type, Extra Services & Available Coupons
   useEffect(() => {
@@ -259,6 +266,18 @@ export default function BookingFlowPage() {
       return;
     }
 
+    // Check device connectivity upfront
+    if (!navigator.onLine) {
+      setNetworkModal({
+        open: true,
+        booking: lastCreatedBooking,
+        paymentId: currentPaymentId,
+        message: 'Perangkat Anda sedang offline. Mohon periksa kembali koneksi data atau Wi-Fi Anda.',
+      });
+      toast.error('Koneksi terputus. Pembayaran belum berhasil diproses.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const extrasPayload = Object.entries(selectedExtras)
@@ -280,9 +299,10 @@ export default function BookingFlowPage() {
         payment_method: paymentMethod,
       };
 
-      // 1. Create Booking
+      // 1. Create or retrieve existing pending booking
       const bookingRes = await bookingService.createBooking(bookingPayload);
       const newBooking = bookingRes.data;
+      setLastCreatedBooking(newBooking);
 
       // 2. If Cash Payment: skip Midtrans, redirect directly to confirmation receipt
       if (paymentMethod === 'cash') {
@@ -300,9 +320,19 @@ export default function BookingFlowPage() {
 
       // 3. Trigger Midtrans Snap Checkout
       const checkoutRes = await paymentService.checkout(newBooking.id);
-      const { snap_token, client_key, payment_id } = checkoutRes.data;
 
-      // 3. Load & Open Snap
+      // Anti Double-Payment Guarantee: If already paid/settled in Midtrans or database
+      if (checkoutRes.data?.already_paid || checkoutRes.already_paid) {
+        toast.success('Pembayaran Anda telah sukses terverifikasi! Sistem mencegah penarikan dana ulang.');
+        const paidPaymentId = checkoutRes.data?.payment_id || newBooking.latest_payment?.id || newBooking.id;
+        navigate(`/payment-result/${paidPaymentId}`);
+        return;
+      }
+
+      const { snap_token, client_key, payment_id } = checkoutRes.data;
+      setCurrentPaymentId(payment_id);
+
+      // 4. Load & Open Snap
       const isProduction = import.meta.env.VITE_MIDTRANS_IS_PRODUCTION === 'true';
       await loadSnapScript(client_key || import.meta.env.VITE_MIDTRANS_CLIENT_KEY, isProduction);
 
@@ -322,15 +352,44 @@ export default function BookingFlowPage() {
           navigate('/customer/dashboard');
         },
         onError: (result) => {
-          toast.error('Pembayaran gagal atau dibatalkan.');
+          toast.error('Pembayaran belum berhasil diselesaikan.');
           navigate('/customer/dashboard');
         },
-        onClose: () => {
+        onClose: async () => {
+          // Reconcile status when modal closes in case payment went through during weak signal
+          try {
+            const checkRes = await paymentService.checkStatus(payment_id);
+            if (checkRes.data?.payment?.status === 'PAID' || checkRes.data?.booking?.status === 'CONFIRMED') {
+              toast.success('Pembayaran Anda sukses terverifikasi!');
+              navigate(`/payment-result/${payment_id}`);
+              return;
+            }
+          } catch (e) {
+            // ignore network glitch on modal close
+          }
           navigate('/customer/dashboard');
         },
       });
     } catch (err) {
-      console.error(err);
+      console.error('Booking submission error:', err);
+      const isNetworkError =
+        !navigator.onLine ||
+        err.code === 'ECONNABORTED' ||
+        err.message?.includes('Network Error') ||
+        err.message?.includes('timeout') ||
+        !err.response;
+
+      if (isNetworkError) {
+        setNetworkModal({
+          open: true,
+          booking: lastCreatedBooking,
+          paymentId: currentPaymentId,
+          message: 'Sinyal koneksi internet Anda lemah atau terputus saat memproses pembayaran. Kamar Anda tetap tersimpan.',
+        });
+        toast.error('Koneksi terganggu. Pembayaran belum berhasil diverifikasi.');
+        return;
+      }
+
       const errData = err.response?.data;
       const msg = errData?.message || err.message || '';
       const isOverbooked =
@@ -350,6 +409,27 @@ export default function BookingFlowPage() {
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleVerifyNetworkPayment = async () => {
+    setCheckingPaymentStatus(true);
+    try {
+      const pid = currentPaymentId || lastCreatedBooking?.latest_payment?.id;
+      if (pid) {
+        const res = await paymentService.checkStatus(pid);
+        if (res.data?.payment?.status === 'PAID' || res.data?.booking?.status === 'CONFIRMED') {
+          toast.success('Hebat! Pembayaran Anda sudah tercatat Lunas di sistem resort.');
+          setNetworkModal({ open: false, booking: null, paymentId: null, message: '' });
+          navigate(`/payment-result/${pid}`);
+          return;
+        }
+      }
+      toast.info('Status pembayaran saat ini belum tercatat lunas. Anda dapat mencoba bayar lagi dengan aman.');
+    } catch (e) {
+      toast.error('Koneksi internet belum stabil. Silakan periksa kembali jaringan Anda.');
+    } finally {
+      setCheckingPaymentStatus(false);
     }
   };
 
@@ -499,6 +579,9 @@ export default function BookingFlowPage() {
                     className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold"
                     required
                   />
+                  <span className="text-[10px] text-slate-500 font-semibold block mt-1">
+                    Waktu Check-In: Mulai 14:00 WIB
+                  </span>
                 </div>
 
                 <div>
@@ -513,6 +596,9 @@ export default function BookingFlowPage() {
                     className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold"
                     required
                   />
+                  <span className="text-[10px] text-amber-700 font-bold block mt-1">
+                    Batas Waktu Check-Out: Pukul 12:00 WIB
+                  </span>
                 </div>
 
                 <div>
@@ -671,63 +757,99 @@ export default function BookingFlowPage() {
                   </div>
                 </div>
 
+                {/* Penjelasan Add-On dari sisi Tamu/User */}
+                <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 text-xs space-y-2">
+                  <div className="flex items-center space-x-2 text-amber-900 font-bold">
+                    <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <span>Panduan Penambahan Layanan Tambahan (Add-Ons):</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11px] text-slate-600 pt-1">
+                    <div className="bg-white/80 p-2.5 rounded-xl border border-amber-100">
+                      <span className="font-bold text-amber-800 block mb-0.5">🗓️ Tipe Per Malam</span>
+                      <span>Dikalikan otomatis dengan durasi menginap Anda ({nights} malam). Cocok untuk sarapan buffet, afternoon tea, dll.</span>
+                    </div>
+                    <div className="bg-white/80 p-2.5 rounded-xl border border-amber-100">
+                      <span className="font-bold text-amber-800 block mb-0.5">🏖️ Tipe Per Masa Inap (Flat)</span>
+                      <span>Dikenakan 1x biaya flat untuk seluruh periode menginap. Cocok untuk jemputan bandara, dekorasi kamar, spa session.</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic pt-0.5">
+                    * Layanan bersifat opsional. Jumlah pax/unit dapat disesuaikan setelah Anda mencentang layanan di bawah. Semua add-on otomatis masuk ke tagihan & invoice resmi.
+                  </p>
+                </div>
+
                 <div className="space-y-3">
                   {extraServices.map((extra) => {
                     const isSelected = !!selectedExtras[extra.id];
                     const qty = selectedExtras[extra.id] || 1;
+                    const isPerStay = extra.price_type === 'per_stay';
+                    const itemSubtotal = extra.price * qty * (isPerStay ? 1 : nights);
 
                     return (
                       <div
                         key={extra.id}
-                        className={`p-4 rounded-2xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                        className={`p-4 rounded-2xl border transition flex flex-col justify-between gap-3 ${
                           isSelected
                             ? 'border-amber-500 bg-amber-50/50 ring-1 ring-amber-500/20'
                             : 'border-slate-200 bg-white hover:border-slate-300'
                         }`}
                       >
-                        <div className="flex items-start space-x-3.5">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleExtraToggle(extra.id)}
-                            className="mt-1 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 cursor-pointer"
-                          />
-                          <div>
-                            <div className="font-bold text-slate-900 text-xs sm:text-sm">
-                              {extra.name}
-                            </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5 max-w-md">
-                              {extra.description}
-                            </p>
-                            <span className="text-xs font-black text-amber-700 mt-1 block">
-                              +{formatRupiah(extra.price)}{' '}
-                              <span className="text-[10px] text-slate-400 font-normal">
-                                ({extra.price_type === 'per_stay' ? 'per masa inap' : 'per malam'})
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-start space-x-3.5">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleExtraToggle(extra.id)}
+                              className="mt-1 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 cursor-pointer"
+                            />
+                            <div>
+                              <div className="font-bold text-slate-900 text-xs sm:text-sm">
+                                {extra.name}
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5 max-w-md">
+                                {extra.description}
+                              </p>
+                              <span className="text-xs font-black text-amber-700 mt-1 block">
+                                +{formatRupiah(extra.price)}{' '}
+                                <span className="text-[10px] text-slate-400 font-normal">
+                                  ({isPerStay ? '1x per masa inap' : `per malam (x${nights} malam)`})
+                                </span>
                               </span>
-                            </span>
+                            </div>
                           </div>
+
+                          {isSelected && (
+                            <div className="flex items-center space-x-2 self-end sm:self-center pl-7 sm:pl-0">
+                              <span className="text-xs font-semibold text-slate-600">Jumlah:</span>
+                              <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-white">
+                                <button
+                                  type="button"
+                                  onClick={() => handleExtraQuantity(extra.id, -1)}
+                                  className="p-1.5 text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <span className="px-3 text-xs font-bold text-slate-900">{qty}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleExtraQuantity(extra.id, 1)}
+                                  className="p-1.5 text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {isSelected && (
-                          <div className="flex items-center space-x-2 self-end sm:self-center pl-7 sm:pl-0">
-                            <span className="text-xs font-semibold text-slate-600">Jumlah:</span>
-                            <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-white">
-                              <button
-                                type="button"
-                                onClick={() => handleExtraQuantity(extra.id, -1)}
-                                className="p-1.5 text-slate-600 hover:bg-slate-100"
-                              >
-                                <Minus className="w-3 h-3" />
-                              </button>
-                              <span className="px-3 text-xs font-bold text-slate-900">{qty}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleExtraQuantity(extra.id, 1)}
-                                className="p-1.5 text-slate-600 hover:bg-slate-100"
-                              >
-                                <Plus className="w-3 h-3" />
-                              </button>
-                            </div>
+                          <div className="pt-2 border-t border-amber-200/60 flex items-center justify-between text-[11px] text-amber-900 pl-7 sm:pl-0">
+                            <span>
+                              Kalkulasi: {qty} unit {isPerStay ? '(Flat 1x stay)' : `× ${nights} malam`}
+                            </span>
+                            <span className="font-black text-amber-800">
+                              Subtotal: {formatRupiah(itemSubtotal)}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -754,7 +876,7 @@ export default function BookingFlowPage() {
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Check-Out:</span>
-                <span className="font-bold text-slate-900">{formatDate(checkOut)} (12:00)</span>
+                <span className="font-bold text-amber-800">{formatDate(checkOut)} (Maks. 12:00 WIB)</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Durasi:</span>
@@ -1125,6 +1247,17 @@ export default function BookingFlowPage() {
           </div>
         </div>
       )}
+
+      {/* Network / Connection Fallback & Anti Double Payment Modal */}
+      <PaymentConnectionModal
+        isOpen={networkModal.open}
+        onClose={() => setNetworkModal({ open: false, booking: null, paymentId: null, message: '' })}
+        onRetry={handleBookingSubmit}
+        onCheckStatus={handleVerifyNetworkPayment}
+        checking={checkingPaymentStatus}
+        message={networkModal.message}
+        bookingCode={networkModal.booking?.booking_code || lastCreatedBooking?.booking_code}
+      />
     </div>
   );
 }

@@ -3,7 +3,9 @@ import { adminService } from '../../services/adminService';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import ConfirmModal from '../../components/common/ConfirmModal';
-import { formatRupiah, formatDate, formatDateTime, BOOKING_STATUS_CONFIG } from '../../utils/format';
+import InvoiceModal from '../../components/common/InvoiceModal';
+import QrisDownloadModal from '../../components/common/QrisDownloadModal';
+import { formatRupiah, formatDate, formatDateTime, formatCheckoutTime, getBookingStayStatus, BOOKING_STATUS_CONFIG } from '../../utils/format';
 import {
   Search,
   Filter,
@@ -25,6 +27,10 @@ import {
   Banknote,
   QrCode,
   Smartphone,
+  FileText,
+  Download,
+  UserX,
+  Clock,
 } from 'lucide-react';
 
 export default function AdminBookingsPage() {
@@ -38,6 +44,8 @@ export default function AdminBookingsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [copiedId, setCopiedId] = useState(null);
+  const [invoiceBooking, setInvoiceBooking] = useState(null);
+  const [qrisBooking, setQrisBooking] = useState(null);
 
   // Check-In Modal State
   const [checkInModalOpen, setCheckInModalOpen] = useState(false);
@@ -278,6 +286,19 @@ export default function AdminBookingsPage() {
     }
   };
 
+  const handleMarkNoShow = async (booking) => {
+    if (!window.confirm(`Yakin ingin menandai reservasi ${booking.booking_code} atas nama "${booking.customer_name}" sebagai HANGUS (Tamu Tidak Hadir)?`)) {
+      return;
+    }
+    try {
+      await adminService.markNoShow(booking.id);
+      toast.success(`Reservasi ${booking.booking_code} berhasil ditandai sebagai Hangus.`);
+      fetchBookings();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Gagal menandai reservasi hangus.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -300,6 +321,7 @@ export default function AdminBookingsPage() {
             { key: 'CHECKED_IN', label: 'Sedang Menginap' },
             { key: 'CHECKED_OUT', label: 'Checked Out' },
             { key: 'PENDING_PAYMENT', label: 'Menunggu Bayar' },
+            { key: 'NO_SHOW', label: 'Hangus' },
             { key: 'CANCELLED', label: 'Dibatalkan' },
           ].map((tab) => (
             <button
@@ -389,6 +411,7 @@ export default function AdminBookingsPage() {
                   const cfg = BOOKING_STATUS_CONFIG[b.status] || BOOKING_STATUS_CONFIG.PENDING_PAYMENT;
                   const isConfirmed = b.status === 'CONFIRMED';
                   const isCheckedIn = b.status === 'CHECKED_IN';
+                  const stayStatus = getBookingStayStatus(b.check_in_date, b.check_out_date);
 
                   return (
                     <tr key={b.id} className="hover:bg-slate-50/80 transition">
@@ -418,8 +441,8 @@ export default function AdminBookingsPage() {
                       </td>
 
                       <td className="px-6 py-4">
-                        <div className="font-bold text-slate-800">
-                          {formatDate(b.check_in_date)} — {formatDate(b.check_out_date)}
+                        <div className="font-bold text-slate-800 text-xs">
+                          {formatDate(b.check_in_date)} (14:00) — {formatCheckoutTime(b.check_out_date, b.checked_out_at)}
                         </div>
                         <div className="text-[11px] text-amber-700 font-semibold mt-0.5">
                           {b.total_nights || 1} Malam
@@ -444,23 +467,58 @@ export default function AdminBookingsPage() {
                       </td>
 
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}
-                        >
-                          {cfg.label}
-                        </span>
+                        {isConfirmed && stayStatus === 'OVERDUE' ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-300">
+                              Lewat Jadwal
+                            </span>
+                            <div className="text-[10px] text-rose-500 font-semibold">Reservasi Hangus</div>
+                          </div>
+                        ) : (
+                          <span
+                            className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}
+                          >
+                            {cfg.label}
+                          </span>
+                        )}
                       </td>
 
                       <td className="px-6 py-4 text-right space-x-1.5 whitespace-nowrap">
-                        {/* Check-In Button */}
+                        {/* Check-In / No-Show Actions for Confirmed Bookings */}
                         {isConfirmed && (
-                          <button
-                            onClick={() => openCheckInModal(b)}
-                            className="inline-flex items-center space-x-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-[11px] shadow-sm transition"
-                          >
-                            <LogIn className="w-3.5 h-3.5" />
-                            <span>Check-In</span>
-                          </button>
+                          <>
+                            {stayStatus === 'OVERDUE' && (
+                              <button
+                                onClick={() => handleMarkNoShow(b)}
+                                className="inline-flex items-center space-x-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-[11px] shadow-sm transition"
+                                title="Masa menginap telah lewat dan tamu tidak check-in. Klik untuk tandai Hangus."
+                              >
+                                <UserX className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Tandai Hangus</span>
+                              </button>
+                            )}
+
+                            {stayStatus === 'UPCOMING' && (
+                              <button
+                                disabled
+                                className="inline-flex items-center space-x-1 px-3 py-1.5 bg-slate-100 text-slate-400 font-bold rounded-xl text-[11px] border border-slate-200 cursor-not-allowed"
+                                title={`Check-in baru dibuka tanggal ${formatDate(b.check_in_date)} (Pukul 14:00 WIB)`}
+                              >
+                                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                <span>Belum Waktunya</span>
+                              </button>
+                            )}
+
+                            {stayStatus === 'ELIGIBLE' && (
+                              <button
+                                onClick={() => openCheckInModal(b)}
+                                className="inline-flex items-center space-x-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-[11px] shadow-sm transition"
+                              >
+                                <LogIn className="w-3.5 h-3.5" />
+                                <span>Check-In</span>
+                              </button>
+                            )}
+                          </>
                         )}
 
                         {/* Check-Out Button */}
@@ -475,7 +533,7 @@ export default function AdminBookingsPage() {
                         )}
 
                         {/* Cancel Booking Button (super admin only, requires the cancellation key) */}
-                        {isSuperAdmin && b.status !== 'CANCELLED' && b.status !== 'CHECKED_OUT' && (
+                        {isSuperAdmin && b.status !== 'CANCELLED' && b.status !== 'CHECKED_OUT' && b.status !== 'NO_SHOW' && (
                           <button
                             type="button"
                             onClick={() => openCancelModal(b)}
@@ -484,6 +542,18 @@ export default function AdminBookingsPage() {
                           >
                             <XCircle className="w-3.5 h-3.5" />
                             <span>Batalkan</span>
+                          </button>
+                        )}
+
+                        {/* Download Invoice Button */}
+                        {b.status !== 'CANCELLED' && b.status !== 'EXPIRED' && (
+                          <button
+                            type="button"
+                            onClick={() => setInvoiceBooking(b)}
+                            className="p-1.5 text-slate-400 hover:text-amber-700 rounded-lg hover:bg-amber-50 transition inline-block align-middle"
+                            title="Unduh / Cetak Invoice Resmi (PDF)"
+                          >
+                            <FileText className="w-4 h-4" />
                           </button>
                         )}
 
@@ -716,6 +786,17 @@ export default function AdminBookingsPage() {
                             className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                           />
                         </div>
+
+                        {offlinePaymentMethod === 'qris' && (
+                          <button
+                            type="button"
+                            onClick={() => setQrisBooking(selectedBookingForCheckIn)}
+                            className="w-full py-2.5 px-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-sm"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Tampilkan & Unduh Gambar QRIS untuk Tamu</span>
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -809,7 +890,7 @@ export default function AdminBookingsPage() {
         loading={checkingOut}
         type="warning"
         title="Konfirmasi Check-Out Tamu"
-        message={`Tamu ${selectedBookingForCheckOut?.customer_name} akan check-out dari Kamar #${(selectedBookingForCheckOut?.assigned_room || selectedBookingForCheckOut?.room)?.room_number || ''}. Status unit fisik kamar akan langsung otomatis dialihkan menjadi "Pembersihan (Cleaning)" agar staf housekeeping dapat segera membersihkannya.`}
+        message={`Tamu ${selectedBookingForCheckOut?.customer_name} akan check-out dari Kamar #${(selectedBookingForCheckOut?.assigned_room || selectedBookingForCheckOut?.room)?.room_number || ''} (Jadwal Maksimal Check-Out: 12:00 WIB). Waktu check-out aktual dicatat ke sistem dan status fisik unit kamar dialihkan menjadi "Pembersihan (Cleaning)".`}
         confirmText="Check-Out Tamu Sekarang"
         cancelText="Batal"
       />
@@ -855,11 +936,13 @@ export default function AdminBookingsPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Check-In:</span>
-                  <span className="font-bold text-slate-900">{formatDate(viewingBooking.check_in_date)}</span>
+                  <span className="font-bold text-slate-900">{formatDate(viewingBooking.check_in_date)} Pukul 14:00 WIB</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Check-Out:</span>
-                  <span className="font-bold text-slate-900">{formatDate(viewingBooking.check_out_date)}</span>
+                  <span className="font-bold text-amber-900">
+                    {formatCheckoutTime(viewingBooking.check_out_date, viewingBooking.checked_out_at)}
+                  </span>
                 </div>
                 {viewingBooking.room && (
                   <div className="flex justify-between text-indigo-700 font-bold pt-1 border-t border-slate-200">
@@ -912,10 +995,32 @@ export default function AdminBookingsPage() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center space-x-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setInvoiceBooking(viewingBooking)}
+                  className="flex-1 sm:flex-initial px-4 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 shadow-sm"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Unduh Invoice (PDF)</span>
+                </button>
+
+                {viewingBooking.status === 'PENDING_PAYMENT' && (
+                  <button
+                    type="button"
+                    onClick={() => setQrisBooking(viewingBooking)}
+                    className="flex-1 sm:flex-initial px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 shadow-sm"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Unduh QRIS</span>
+                  </button>
+                )}
+              </div>
+
               <button
                 onClick={() => setDetailModalOpen(false)}
-                className="px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs"
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition text-center"
               >
                 Tutup
               </button>
@@ -1048,6 +1153,26 @@ export default function AdminBookingsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Invoice Modal */}
+      {invoiceBooking && (
+        <InvoiceModal
+          isOpen={!!invoiceBooking}
+          onClose={() => setInvoiceBooking(null)}
+          booking={invoiceBooking}
+        />
+      )}
+
+      {/* QRIS Download Modal */}
+      {qrisBooking && (
+        <QrisDownloadModal
+          isOpen={!!qrisBooking}
+          onClose={() => setQrisBooking(null)}
+          booking={qrisBooking}
+          grossAmount={qrisBooking?.total_amount}
+          bank={selectedBank ? selectedBank.toUpperCase() : 'EDC'}
+        />
       )}
     </div>
   );

@@ -19,6 +19,7 @@ class Booking extends Model
     public const STATUS_CANCELLED = 'CANCELLED';
     public const STATUS_EXPIRED = 'EXPIRED';
     public const STATUS_PAID_NO_SLOT = 'PAID_NO_SLOT';
+    public const STATUS_NO_SHOW = 'NO_SHOW';
 
     protected $fillable = [
         'booking_code',
@@ -142,5 +143,10 @@ class Booking extends Model
     public function isExpired(): bool
     {
         return $this->status === self::STATUS_EXPIRED;
+    }
+
+    public function isNoShow(): bool
+    {
+        return $this->status === self::STATUS_NO_SHOW;
     }
 }
