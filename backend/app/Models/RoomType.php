@@ -31,6 +31,23 @@ class RoomType extends Model
         'gallery_images',
     ];
 
+    protected $appends = [
+        'image_url',
+    ];
+
+    public function getImageUrlAttribute(): ?string
+    {
+        if (empty($this->featured_image)) {
+            return null;
+        }
+
+        if (str_starts_with($this->featured_image, 'http://') || str_starts_with($this->featured_image, 'https://')) {
+            return $this->featured_image;
+        }
+
+        return url('storage/' . ltrim($this->featured_image, '/'));
+    }
+
     protected function casts(): array
     {
         return [

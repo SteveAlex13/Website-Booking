@@ -25,10 +25,21 @@ export const adminService = {
   },
 
   async createRoomType(data) {
+    if (data instanceof FormData) {
+      return await api.post('/admin/room-types', data, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
     return await api.post('/admin/room-types', data);
   },
 
   async updateRoomType(id, data) {
+    if (data instanceof FormData) {
+      data.append('_method', 'PUT');
+      return await api.post(`/admin/room-types/${id}`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
     return await api.put(`/admin/room-types/${id}`, data);
   },
 

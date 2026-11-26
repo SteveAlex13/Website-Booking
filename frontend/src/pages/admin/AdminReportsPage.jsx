@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { adminService } from '../../services/adminService';
-import { formatRupiah, formatDateTime, BOOKING_STATUS_CONFIG } from '../../utils/format';
+import { formatRupiah, formatDate, formatDateTime, BOOKING_STATUS_CONFIG } from '../../utils/format';
 import {
   BarChart3,
   Download,
@@ -15,6 +15,11 @@ import {
   Wallet,
   QrCode,
   FileSpreadsheet,
+  Printer,
+  Hotel,
+  ShieldCheck,
+  CheckCircle2,
+  Building2,
 } from 'lucide-react';
 
 export default function AdminReportsPage() {
@@ -605,37 +610,61 @@ export default function AdminReportsPage() {
     );
   };
 
+  const channels = reportData?.payment_channels || {};
+  const cash = channels.cash || { total_amount: 0, count: 0, percentage: 0 };
+  const qris = channels.qris || { total_amount: 0, count: 0, percentage: 0, banks: {} };
+  const debit = channels.debit_card || { total_amount: 0, count: 0, percentage: 0, banks: {} };
+  const credit = channels.credit_card || { total_amount: 0, count: 0, percentage: 0, banks: {} };
+  const midtrans = channels.midtrans || { total_amount: 0, count: 0, percentage: 0 };
+
+  const frontDeskTrx = (cash.count || 0) + (qris.count || 0) + (debit.count || 0) + (credit.count || 0);
+  const avgRevenue =
+    reportData?.total_bookings > 0
+      ? Math.round(Number(reportData.total_revenue || 0) / Number(reportData.total_bookings || 1))
+      : 0;
+
+  const topServices = reportData?.top_services || reportData?.top_room_types || [];
+  const bookingsList = reportData?.bookings || [];
+  const totalPrintNights = bookingsList.reduce((acc, b) => acc + (Number(b.total_nights) || 1), 0);
+  const totalPrintAmount = bookingsList.reduce((acc, b) => acc + (Number(b.total_amount) || 0), 0);
+
   return (
-    <div className="space-y-4">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-900">Laporan & Rekapitulasi</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Analisis arus pendapatan hotel dan statistik layanan berdasarkan rentang tanggal.
-          </p>
-        </div>
+    <>
+      {/* ======================================================== */}
+      {/* 1. SCREEN VIEW (Hidden During Print)                      */}
+      {/* ======================================================== */}
+      <div className="space-y-4 print:hidden">
+        {/* Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-extrabold text-slate-900">Laporan & Rekapitulasi</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Analisis arus pendapatan hotel dan statistik layanan berdasarkan rentang tanggal.
+            </p>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          <button
-            onClick={handleExportExcel}
-            disabled={!reportData || loading}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50"
-            title="Unduh laporan lengkap dalam format Microsoft Excel (.xlsx)"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Ekspor Excel (.xlsx)</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={handleExportExcel}
+              disabled={!reportData || loading}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50"
+              title="Unduh laporan lengkap dalam format Microsoft Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Ekspor Excel (.xlsx)</span>
+            </button>
 
-          <button
-            onClick={handlePrint}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs transition shadow-sm"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Cetak / PDF</span>
-          </button>
+            <button
+              onClick={handlePrint}
+              disabled={!reportData || loading}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50"
+              title="Cetak atau simpan laporan resmi dalam format PDF (A4)"
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-300" />
+              <span>Ekspor / Cetak PDF</span>
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* Date Filter Toolbar (Compact with Presets) */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -1108,7 +1137,503 @@ export default function AdminReportsPage() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 2. PRINT / PDF EXPORT CONTAINER (Visible Only on Print)   */}
+      {/* ======================================================== */}
+      {reportData && (
+        <div id="printable-report" className="hidden print:block text-slate-900 bg-white">
+          {/* A. Formal Hotel Letterhead (Kop Surat Resmi) */}
+          <div className="border-b-2 border-slate-900 pb-3 mb-4 print-avoid-break">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3.5">
+                <div className="w-12 h-12 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black shadow-sm print:bg-amber-600">
+                  <Hotel className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-base font-black tracking-tight text-slate-900 uppercase">
+                    Hotel The Royal Nusantara Resort & Spa
+                  </h1>
+                  <p className="text-[10px] font-bold text-amber-700 tracking-wider uppercase">
+                    Luxury Suites, Beachfront Villa & International Convention
+                  </p>
+                  <p className="text-[9px] text-slate-500 mt-0.5 leading-tight">
+                    Kawasan Pariwisata Terpadu Lot 88, Nusa Dua, Bali 80363 — Indonesia
+                  </p>
+                  <p className="text-[9px] text-slate-500 leading-tight">
+                    Telp: +62 361 889 9900 &bull; E-mail: finance@royalnusantara.com &bull; Website: www.royalnusantara.com
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="inline-block px-2.5 py-1 rounded bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider">
+                  Dokumen Audit Resmi PMS
+                </span>
+                <p className="text-[9px] font-mono text-slate-600 mt-1 font-bold">
+                  Ref: DOC/FIN/{new Date().getFullYear()}/{(reportData.start_date || '').replace(/-/g, '')}-{(reportData.end_date || '').replace(/-/g, '')}
+                </p>
+                <p className="text-[9px] text-emerald-700 font-bold mt-0.5 flex items-center justify-end gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>Terverifikasi Sistem Keuangan</span>
+                </p>
+              </div>
+            </div>
+            <div className="border-b border-slate-300 mt-2.5"></div>
+          </div>
+
+          {/* B. Document Title & 4-Box Metadata Grid */}
+          <div className="mb-4 print-avoid-break">
+            <div className="text-center mb-3">
+              <h2 className="text-sm font-black text-slate-900 tracking-wide uppercase">
+                Laporan Rekapitulasi Finansial & Arus Kas Masuk
+              </h2>
+              <p className="text-[10px] text-slate-500 font-medium">
+                Front Desk Property Management System (PMS) &mdash; Executive Financial Ledger Report
+              </p>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 text-[10px] border border-slate-200 rounded-lg p-2.5 bg-slate-50/70">
+              <div>
+                <span className="text-[8px] uppercase font-bold text-slate-400 block tracking-wider">Periode Pembukuan:</span>
+                <span className="font-extrabold text-slate-900 text-[10px]">
+                  {formatDate(reportData.start_date)} s/d {formatDate(reportData.end_date)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[8px] uppercase font-bold text-slate-400 block tracking-wider">Tanggal & Waktu Cetak:</span>
+                <span className="font-bold text-slate-800 text-[10px]">
+                  {formatDateTime(new Date().toISOString())}
+                </span>
+              </div>
+              <div>
+                <span className="text-[8px] uppercase font-bold text-slate-400 block tracking-wider">Total Reservasi Terdata:</span>
+                <span className="font-extrabold text-slate-900 text-[10px]">
+                  {reportData.total_bookings || 0} Reservasi Tamu
+                </span>
+              </div>
+              <div>
+                <span className="text-[8px] uppercase font-bold text-slate-400 block tracking-wider">Mata Uang Pembukuan:</span>
+                <span className="font-extrabold text-slate-900 text-[10px]">
+                  IDR (Indonesian Rupiah - Rp)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* C. Bagian 1: Indikator Kinerja Finansial Utama (KPI Overview) */}
+          <div className="mb-4 print-avoid-break">
+            <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 border-b border-slate-200 pb-1">
+              <span>1. Indikator Kinerja Finansial Utama (Executive KPI Overview)</span>
+            </h3>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="border border-emerald-200 rounded-lg p-2 bg-emerald-50/50">
+                <span className="text-[8px] font-bold text-slate-500 uppercase block">Total Pendapatan Terverifikasi</span>
+                <span className="text-xs font-black text-emerald-800 block mt-0.5">
+                  {formatRupiah(reportData.total_revenue || 0)}
+                </span>
+                <span className="text-[8px] text-slate-500 font-medium">Lunas & settlement seluruh kanal</span>
+              </div>
+              <div className="border border-indigo-200 rounded-lg p-2 bg-indigo-50/50">
+                <span className="text-[8px] font-bold text-slate-500 uppercase block">Total Reservasi Masuk</span>
+                <span className="text-xs font-black text-indigo-800 block mt-0.5">
+                  {reportData.total_bookings || 0} Reservasi
+                </span>
+                <span className="text-[8px] text-slate-500 font-medium">Volume reservasi pada rentang tanggal</span>
+              </div>
+              <div className="border border-blue-200 rounded-lg p-2 bg-blue-50/50">
+                <span className="text-[8px] font-bold text-slate-500 uppercase block">Rerata Nilai Booking (ADR)</span>
+                <span className="text-xs font-black text-blue-800 block mt-0.5">
+                  {formatRupiah(avgRevenue)}
+                </span>
+                <span className="text-[8px] text-slate-500 font-medium">Rata-rata omset per nomor booking</span>
+              </div>
+              <div className="border border-amber-200 rounded-lg p-2 bg-amber-50/50">
+                <span className="text-[8px] font-bold text-slate-500 uppercase block">Rasio Kasir vs Online</span>
+                <span className="text-xs font-black text-amber-800 block mt-0.5">
+                  {frontDeskTrx} Kasir : {channels.midtrans?.count || 0} Gateway
+                </span>
+                <span className="text-[8px] text-slate-500 font-medium">Front Desk vs Midtrans Snap</span>
+              </div>
+            </div>
+          </div>
+
+          {/* D. Bagian 2: Rekapitulasi Bentuk Uang Masuk (Payment Inflows Breakdown) */}
+          <div className="mb-4 print-avoid-break">
+            <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider mb-1.5 flex items-center justify-between border-b border-slate-200 pb-1">
+              <span>2. Rekapitulasi Bentuk Uang Masuk (Payment Inflows Breakdown)</span>
+              <span className="text-[8px] font-bold text-slate-400 normal-case">Terverifikasi Settlement</span>
+            </h3>
+            <table className="w-full border-collapse border border-slate-200 text-[9px]">
+              <thead>
+                <tr className="bg-slate-100/90 text-slate-700 font-bold uppercase text-[8px]">
+                  <th className="border border-slate-300 p-1.5 text-center w-8">No</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Bentuk Uang / Kanal Pembayaran</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Metode / Instansi Penerima</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-16">Jumlah Trx</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-16">Pangsa (%)</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-32">Total Nominal (IDR)</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Keterangan Operasional & Mutasi Kasir</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border border-slate-200 p-1.5 text-center font-bold">1</td>
+                  <td className="border border-slate-200 p-1.5 font-bold text-slate-900">Uang Tunai (Cash)</td>
+                  <td className="border border-slate-200 p-1.5">Front Desk Kasir Fisik</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{cash.count || 0}</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{cash.percentage || 0}%</td>
+                  <td className="border border-slate-200 p-1.5 text-right font-black text-slate-900">{formatRupiah(cash.total_amount)}</td>
+                  <td className="border border-slate-200 p-1.5 text-[8.5px] text-slate-600">Pelunasan tunai fisik langsung di meja kasir saat check-in</td>
+                </tr>
+                <tr className="bg-slate-50/50">
+                  <td className="border border-slate-200 p-1.5 text-center font-bold">2</td>
+                  <td className="border border-slate-200 p-1.5 font-bold text-slate-900">QRIS (Mesin EDC)</td>
+                  <td className="border border-slate-200 p-1.5">EDC Bank Partner (Multi Bank)</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{qris.count || 0}</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{qris.percentage || 0}%</td>
+                  <td className="border border-slate-200 p-1.5 text-right font-black text-slate-900">{formatRupiah(qris.total_amount)}</td>
+                  <td className="border border-slate-200 p-1.5 text-[8.5px] text-slate-600">BCA: {formatRupiah(qris.banks?.bca || 0)} | BRI: {formatRupiah(qris.banks?.bri || 0)} | BTN: {formatRupiah(qris.banks?.btn || 0)} | Mandiri: {formatRupiah(qris.banks?.mandiri || 0)}</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 p-1.5 text-center font-bold">3</td>
+                  <td className="border border-slate-200 p-1.5 font-bold text-slate-900">Kartu Debit (EDC)</td>
+                  <td className="border border-slate-200 p-1.5">EDC Bank Partner (GPN / Visa / Master)</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{debit.count || 0}</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{debit.percentage || 0}%</td>
+                  <td className="border border-slate-200 p-1.5 text-right font-black text-slate-900">{formatRupiah(debit.total_amount)}</td>
+                  <td className="border border-slate-200 p-1.5 text-[8.5px] text-slate-600">BCA: {formatRupiah(debit.banks?.bca || 0)} | BRI: {formatRupiah(debit.banks?.bri || 0)} | BTN: {formatRupiah(debit.banks?.btn || 0)} | Mandiri: {formatRupiah(debit.banks?.mandiri || 0)}</td>
+                </tr>
+                <tr className="bg-slate-50/50">
+                  <td className="border border-slate-200 p-1.5 text-center font-bold">4</td>
+                  <td className="border border-slate-200 p-1.5 font-bold text-slate-900">Kartu Kredit (EDC)</td>
+                  <td className="border border-slate-200 p-1.5">EDC Bank Partner (Visa / MasterCard / JCB)</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{credit.count || 0}</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{credit.percentage || 0}%</td>
+                  <td className="border border-slate-200 p-1.5 text-right font-black text-slate-900">{formatRupiah(credit.total_amount)}</td>
+                  <td className="border border-slate-200 p-1.5 text-[8.5px] text-slate-600">BCA: {formatRupiah(credit.banks?.bca || 0)} | BRI: {formatRupiah(credit.banks?.bri || 0)} | BTN: {formatRupiah(credit.banks?.btn || 0)} | Mandiri: {formatRupiah(credit.banks?.mandiri || 0)}</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-200 p-1.5 text-center font-bold">5</td>
+                  <td className="border border-slate-200 p-1.5 font-bold text-slate-900">Midtrans Online Gateway</td>
+                  <td className="border border-slate-200 p-1.5">Payment Gateway Otomatis</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{midtrans.count || 0}</td>
+                  <td className="border border-slate-200 p-1.5 text-center font-semibold">{midtrans.percentage || 0}%</td>
+                  <td className="border border-slate-200 p-1.5 text-right font-black text-slate-900">{formatRupiah(midtrans.total_amount)}</td>
+                  <td className="border border-slate-200 p-1.5 text-[8.5px] text-slate-600">Transaksi terverifikasi otomatis website (QRIS Snap, GoPay, VA Bank, Kartu Online)</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-400">
+                  <td colSpan={3} className="border border-slate-300 p-1.5 text-right uppercase tracking-wider text-[8.5px]">
+                    TOTAL ARUS KAS MASUK TERVERIFIKASI
+                  </td>
+                  <td className="border border-slate-300 p-1.5 text-center font-black">
+                    {frontDeskTrx + (midtrans.count || 0)}
+                  </td>
+                  <td className="border border-slate-300 p-1.5 text-center font-black">100.0%</td>
+                  <td className="border border-slate-300 p-1.5 text-right font-black text-emerald-800 text-[9.5px]">
+                    {formatRupiah(reportData.total_revenue || 0)}
+                  </td>
+                  <td className="border border-slate-300 p-1.5 text-[8px] text-slate-600 font-semibold">
+                    Akumulasi 100% penerimaan kasir & online terverifikasi lunas
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* E. Bagian 3: Rincian Distribusi Mesin EDC per Bank Mitra */}
+          <div className="mb-4 print-avoid-break">
+            <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider mb-1.5 flex items-center justify-between border-b border-slate-200 pb-1">
+              <span>3. Rincian Distribusi Penerimaan Mesin EDC per Bank Mitra</span>
+              <span className="text-[8px] font-bold text-slate-400 normal-case">Settlement Front Desk EDC</span>
+            </h3>
+            <table className="w-full border-collapse border border-slate-200 text-[9px]">
+              <thead>
+                <tr className="bg-slate-100/90 text-slate-700 font-bold uppercase text-[8px]">
+                  <th className="border border-slate-300 p-1.5 text-left">Nama Bank Mitra EDC</th>
+                  <th className="border border-slate-300 p-1.5 text-right">QRIS EDC (IDR)</th>
+                  <th className="border border-slate-300 p-1.5 text-right">Kartu Debit (IDR)</th>
+                  <th className="border border-slate-300 p-1.5 text-right">Kartu Kredit (IDR)</th>
+                  <th className="border border-slate-300 p-1.5 text-right font-black bg-slate-200/60">Subtotal EDC per Bank (IDR)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { key: 'bca', name: 'Bank Central Asia (BCA)' },
+                  { key: 'bri', name: 'Bank Rakyat Indonesia (BRI)' },
+                  { key: 'btn', name: 'Bank Tabungan Negara (BTN)' },
+                  { key: 'mandiri', name: 'Bank Mandiri' },
+                ].map((bank, idx) => {
+                  const bQris = Number(qris.banks?.[bank.key] || 0);
+                  const bDebit = Number(debit.banks?.[bank.key] || 0);
+                  const bCredit = Number(credit.banks?.[bank.key] || 0);
+                  const bSubtotal = bQris + bDebit + bCredit;
+                  return (
+                    <tr key={bank.key} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
+                      <td className="border border-slate-200 p-1.5 font-bold text-slate-900">{bank.name}</td>
+                      <td className="border border-slate-200 p-1.5 text-right">{formatRupiah(bQris)}</td>
+                      <td className="border border-slate-200 p-1.5 text-right">{formatRupiah(bDebit)}</td>
+                      <td className="border border-slate-200 p-1.5 text-right">{formatRupiah(bCredit)}</td>
+                      <td className="border border-slate-200 p-1.5 text-right font-black text-slate-900 bg-slate-100/50">
+                        {formatRupiah(bSubtotal)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-400">
+                  <td className="border border-slate-300 p-1.5 uppercase tracking-wider text-[8.5px]">TOTAL PENERIMAAN EDC</td>
+                  <td className="border border-slate-300 p-1.5 text-right font-black">{formatRupiah(qris.total_amount || 0)}</td>
+                  <td className="border border-slate-300 p-1.5 text-right font-black">{formatRupiah(debit.total_amount || 0)}</td>
+                  <td className="border border-slate-300 p-1.5 text-right font-black">{formatRupiah(credit.total_amount || 0)}</td>
+                  <td className="border border-slate-300 p-1.5 text-right font-black text-indigo-900 bg-slate-200/80">
+                    {formatRupiah((qris.total_amount || 0) + (debit.total_amount || 0) + (credit.total_amount || 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* F. Bagian 4: Statistik Popularitas Tipe Kamar & Layanan */}
+          {topServices.length > 0 && (
+            <div className="mb-4 print-avoid-break">
+              <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider mb-1.5 flex items-center justify-between border-b border-slate-200 pb-1">
+                <span>4. Statistik Popularitas Tipe Kamar & Layanan Tambahan</span>
+                <span className="text-[8px] font-bold text-slate-400 normal-case">Top Booked Rooms</span>
+              </h3>
+              <table className="w-full border-collapse border border-slate-200 text-[9px]">
+                <thead>
+                  <tr className="bg-slate-100/90 text-slate-700 font-bold uppercase text-[8px]">
+                    <th className="border border-slate-300 p-1.5 text-center w-12">Peringkat</th>
+                    <th className="border border-slate-300 p-1.5 text-left">Nama Tipe Kamar / Layanan</th>
+                    <th className="border border-slate-300 p-1.5 text-right w-28">Tarif Satuan (IDR)</th>
+                    <th className="border border-slate-300 p-1.5 text-center w-24">Frekuensi Booking</th>
+                    <th className="border border-slate-300 p-1.5 text-right w-36">Estimasi Kontribusi Omset</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topServices.map((svc, idx) => {
+                    const count = Number(svc.bookings_count || 0);
+                    const price = Number(svc.price || 0);
+                    const subtotal = count * price;
+                    return (
+                      <tr key={svc.id || idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
+                        <td className="border border-slate-200 p-1.5 text-center font-bold">{idx + 1}</td>
+                        <td className="border border-slate-200 p-1.5 font-bold text-slate-900">{svc.name}</td>
+                        <td className="border border-slate-200 p-1.5 text-right font-semibold">{formatRupiah(price)}</td>
+                        <td className="border border-slate-200 p-1.5 text-center font-extrabold text-indigo-700">{count}x Dipesan</td>
+                        <td className="border border-slate-200 p-1.5 text-right font-black text-slate-900">{formatRupiah(subtotal)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* G. Bagian 5: Buku Besar Rincian Transaksi Reservasi Tamu */}
+          <div className="mb-4">
+            <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider mb-1.5 flex items-center justify-between border-b border-slate-200 pb-1">
+              <span>5. Buku Besar Rincian Transaksi Reservasi Tamu (Detailed Reservation Ledger)</span>
+              <span className="text-[8px] font-bold text-slate-400 normal-case">Total {bookingsList.length} Transaksi</span>
+            </h3>
+            <table className="w-full border-collapse border border-slate-200 text-[8.5px]">
+              <thead>
+                <tr className="bg-slate-100/90 text-slate-700 font-bold uppercase text-[7.5px]">
+                  <th className="border border-slate-300 p-1 text-center w-6">No</th>
+                  <th className="border border-slate-300 p-1 text-left">Kode Booking</th>
+                  <th className="border border-slate-300 p-1 text-left">Tanggal Order</th>
+                  <th className="border border-slate-300 p-1 text-left">Nama Tamu & Kontak</th>
+                  <th className="border border-slate-300 p-1 text-left">Tipe Kamar / Unit</th>
+                  <th className="border border-slate-300 p-1 text-center">Check-In</th>
+                  <th className="border border-slate-300 p-1 text-center">Check-Out</th>
+                  <th className="border border-slate-300 p-1 text-center w-10">Malam</th>
+                  <th className="border border-slate-300 p-1 text-right">Total Biaya (IDR)</th>
+                  <th className="border border-slate-300 p-1 text-left">Bentuk Pelunasan / EDC</th>
+                  <th className="border border-slate-300 p-1 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookingsList.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="border border-slate-200 p-3 text-center text-slate-400">
+                      Tidak ada data transaksi pada rentang periode ini.
+                    </td>
+                  </tr>
+                ) : (
+                  bookingsList.map((b, idx) => {
+                    const payment = b.latest_payment || b.latestPayment;
+                    const pType = (payment?.payment_type || '').toLowerCase();
+                    const isPaid = payment?.status === 'PAID';
+                    let detailText = '-';
+
+                    if (b.payment_method === 'cash') {
+                      if (isPaid && pType) {
+                        if (pType === 'cash') detailText = 'Tunai (Kasir)';
+                        else if (pType.startsWith('qris_')) detailText = `QRIS ${pType.replace('qris_', '').toUpperCase()}`;
+                        else if (pType.startsWith('debit_')) detailText = `Debit ${pType.replace('debit_', '').toUpperCase()}`;
+                        else if (pType.startsWith('credit_')) detailText = `CC ${pType.replace('credit_', '').toUpperCase()}`;
+                        else detailText = `${pType.toUpperCase()}`;
+                      } else {
+                        detailText = 'Bayar di Tempat (Pending)';
+                      }
+                    } else {
+                      detailText = (pType || 'Midtrans Snap').toUpperCase();
+                    }
+
+                    const assignedRoom = b.assigned_room?.room_number || b.assignedRoom?.room_number || '-';
+                    const statusLabel =
+                      BOOKING_STATUS_CONFIG[b.status]?.label ||
+                      (b.status === 'CONFIRMED'
+                        ? 'Terkonfirmasi'
+                        : b.status === 'CHECKED_IN'
+                        ? 'Check-In'
+                        : b.status === 'CHECKED_OUT'
+                        ? 'Selesai'
+                        : b.status === 'CANCELLED'
+                        ? 'Dibatalkan'
+                        : b.status === 'EXPIRED'
+                        ? 'Hangus'
+                        : b.status);
+
+                    return (
+                      <tr key={b.id || idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : ''}>
+                        <td className="border border-slate-200 p-1 text-center font-bold">{idx + 1}</td>
+                        <td className="border border-slate-200 p-1 font-mono font-bold text-slate-900 whitespace-nowrap">
+                          {b.booking_code}
+                        </td>
+                        <td className="border border-slate-200 p-1 text-slate-600 whitespace-nowrap text-[8px]">
+                          {formatDateTime(b.created_at)}
+                        </td>
+                        <td className="border border-slate-200 p-1">
+                          <span className="font-bold text-slate-900 block leading-tight">{b.customer_name}</span>
+                          <span className="text-[7.5px] text-slate-500 block leading-tight">{b.customer_phone || b.customer_email || '-'}</span>
+                        </td>
+                        <td className="border border-slate-200 p-1 text-slate-700">
+                          <span className="font-semibold block leading-tight">{b.room_type?.name || b.service_name || '-'}</span>
+                          <span className="text-[7.5px] text-slate-500 block leading-tight">Unit: {assignedRoom}</span>
+                        </td>
+                        <td className="border border-slate-200 p-1 text-center whitespace-nowrap text-[8px]">{b.check_in_date || '-'}</td>
+                        <td className="border border-slate-200 p-1 text-center whitespace-nowrap text-[8px]">{b.check_out_date || '-'}</td>
+                        <td className="border border-slate-200 p-1 text-center font-bold">{b.total_nights || 1}</td>
+                        <td className="border border-slate-200 p-1 text-right font-black text-slate-900 whitespace-nowrap">
+                          {formatRupiah(b.total_amount)}
+                        </td>
+                        <td className="border border-slate-200 p-1 text-[8px] font-semibold text-slate-700 whitespace-nowrap">
+                          {detailText}
+                        </td>
+                        <td className="border border-slate-200 p-1 text-center whitespace-nowrap">
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[7.5px] font-bold border border-slate-300 bg-white text-slate-800">
+                            {statusLabel}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+              {bookingsList.length > 0 && (
+                <tfoot>
+                  <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-400">
+                    <td colSpan={7} className="border border-slate-300 p-1.5 text-right uppercase tracking-wider text-[8px]">
+                      TOTAL AKUMULASI BUKU BESAR
+                    </td>
+                    <td className="border border-slate-300 p-1.5 text-center font-black">{totalPrintNights}</td>
+                    <td className="border border-slate-300 p-1.5 text-right font-black text-emerald-800 text-[9px]">
+                      {formatRupiah(totalPrintAmount)}
+                    </td>
+                    <td colSpan={2} className="border border-slate-300 p-1.5 text-[7.5px] text-slate-600 font-semibold">
+                      Total {bookingsList.length} transaksi reservasi
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+
+          {/* H. Bagian 6: Lembar Pengesahan & Tanda Tangan Resmi (Sign-Off Block) */}
+          <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/40 print-avoid-break mt-6">
+            <h4 className="text-[9px] font-black uppercase tracking-wider text-slate-700 mb-2 border-b border-slate-200 pb-1 text-center">
+              Lembar Pengesahan & Verifikasi Laporan Keuangan Hotel
+            </h4>
+            <div className="grid grid-cols-3 gap-6 text-center text-[9px] pt-1">
+              <div>
+                <span className="font-bold text-slate-500 uppercase text-[8px] block">Dibuat Oleh:</span>
+                <span className="font-black text-slate-800 block text-[9px]">Front Desk & Night Auditor</span>
+                <div className="h-14 flex items-end justify-center">
+                  <div className="w-36 border-b border-slate-400"></div>
+                </div>
+                <span className="text-[8px] text-slate-400 block mt-1">Nama Jelas & Paraf</span>
+                <span className="text-[7.5px] text-slate-400 block">Tgl: ____________________</span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-500 uppercase text-[8px] block">Diverifikasi Oleh:</span>
+                <span className="font-black text-slate-800 block text-[9px]">Financial Controller / Kasir Utama</span>
+                <div className="h-14 flex items-end justify-center">
+                  <div className="w-36 border-b border-slate-400"></div>
+                </div>
+                <span className="text-[8px] text-slate-400 block mt-1">Nama Jelas & Paraf</span>
+                <span className="text-[7.5px] text-slate-400 block">Tgl: ____________________</span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-500 uppercase text-[8px] block">Disetujui Oleh:</span>
+                <span className="font-black text-slate-800 block text-[9px]">General Manager Hotel</span>
+                <div className="h-14 flex items-end justify-center">
+                  <div className="w-36 border-b border-slate-400"></div>
+                </div>
+                <span className="text-[8px] text-slate-400 block mt-1">Nama Jelas & Tanda Tangan</span>
+                <span className="text-[7.5px] text-slate-400 block">Tgl: ____________________</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-2 border-t border-slate-200 text-center">
+              <p className="text-[7.5px] text-slate-400 leading-tight">
+                * Dokumen laporan keuangan ini dihasilkan secara resmi dan sah oleh Sistem Manajemen Hotel & Front Desk (PMS) The Royal Nusantara Resort & Spa.
+                Laporan ini diperuntukkan sebagai dokumen audit resmi, rekonsiliasi kas harian, pelaporan dewan komisaris, dan kepatuhan perpajakan.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 3. EMBEDDED PRINT CSS                                     */}
+      {/* ======================================================== */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #printable-report, #printable-report * {
+            visibility: visible !important;
+          }
+          #printable-report {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 8mm 6mm 10mm 6mm !important;
+            display: block !important;
+            background: #ffffff !important;
+            color: #0f172a !important;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .print-avoid-break {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          @page {
+            size: A4 portrait;
+            margin: 10mm 6mm 12mm 6mm;
+          }
+        }
+      `}</style>
+    </>
   );
 }
 

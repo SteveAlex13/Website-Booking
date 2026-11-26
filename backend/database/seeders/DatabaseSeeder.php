@@ -117,6 +117,7 @@ class DatabaseSeeder extends Seeder
                 'total_rooms' => 6,
                 'rooms' => ['101', '102', '103', '104', '105', '106'],
                 'floor' => 1,
+                'featured_image' => 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80',
             ],
             [
                 'name' => 'Executive Twin Garden Suite',
@@ -131,6 +132,7 @@ class DatabaseSeeder extends Seeder
                 'total_rooms' => 5,
                 'rooms' => ['201', '202', '203', '204', '205'],
                 'floor' => 2,
+                'featured_image' => 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80',
             ],
             [
                 'name' => 'Royal Honeymoon Suite with Jacuzzi',
@@ -145,6 +147,7 @@ class DatabaseSeeder extends Seeder
                 'total_rooms' => 4,
                 'rooms' => ['301', '302', '303', '304'],
                 'floor' => 3,
+                'featured_image' => 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1200&q=80',
             ],
             [
                 'name' => 'Presidential Ocean Penthouse Suite',
@@ -159,6 +162,7 @@ class DatabaseSeeder extends Seeder
                 'total_rooms' => 2,
                 'rooms' => ['501', '502'],
                 'floor' => 5,
+                'featured_image' => 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1200&q=80',
             ],
             [
                 'name' => 'Private Pool Family Villa',
@@ -173,6 +177,7 @@ class DatabaseSeeder extends Seeder
                 'total_rooms' => 3,
                 'rooms' => ['V-01', 'V-02', 'V-03'],
                 'floor' => 1,
+                'featured_image' => 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80',
             ],
         ];
 
@@ -190,6 +195,7 @@ class DatabaseSeeder extends Seeder
                     'room_size_sqm' => $rtData['room_size_sqm'],
                     'bed_type' => $rtData['bed_type'],
                     'total_rooms' => $rtData['total_rooms'],
+                    'featured_image' => $rtData['featured_image'] ?? null,
                     'is_active' => true,
                 ]
             );

@@ -76,6 +76,7 @@ class RoomTypeController extends Controller
                 'room_size_sqm' => $rt->room_size_sqm,
                 'bed_type' => $rt->bed_type,
                 'featured_image' => $rt->featured_image,
+                'image_url' => $rt->image_url,
                 'gallery_images' => $rt->gallery_images ?? [],
                 'amenities' => $rt->amenities,
                 'is_available' => $availability['is_available'],
@@ -175,7 +176,8 @@ class RoomTypeController extends Controller
             'is_active' => 'boolean',
             'amenities' => 'nullable|array',
             'amenities.*' => 'exists:amenities,id',
-            'featured_image' => 'nullable|image|max:3072',
+            'featured_image' => 'nullable',
+            'image_url' => 'nullable|string|max:1000',
         ]);
 
         $hotel = Hotel::firstOrCreate(['id' => 1], [
@@ -196,7 +198,14 @@ class RoomTypeController extends Controller
 
         $imagePath = null;
         if ($request->hasFile('featured_image')) {
+            $request->validate([
+                'featured_image' => 'file|image|max:5120',
+            ]);
             $imagePath = $request->file('featured_image')->store('rooms', 'public');
+        } elseif ($request->filled('image_url')) {
+            $imagePath = trim((string) $request->input('image_url'));
+        } elseif (is_string($request->input('featured_image')) && ! empty($request->input('featured_image'))) {
+            $imagePath = trim((string) $request->input('featured_image'));
         }
 
         $roomType = RoomType::create([
@@ -245,14 +254,36 @@ class RoomTypeController extends Controller
             'total_rooms' => 'required|integer|min:1',
             'is_active' => 'boolean',
             'amenities' => 'nullable|array',
-            'featured_image' => 'nullable|image|max:3072',
+            'featured_image' => 'nullable',
+            'image_url' => 'nullable|string|max:1000',
+            'remove_image' => 'nullable',
         ]);
 
         if ($request->hasFile('featured_image')) {
-            if ($roomType->featured_image && Storage::disk('public')->exists($roomType->featured_image)) {
+            $request->validate([
+                'featured_image' => 'file|image|max:5120',
+            ]);
+            if ($roomType->featured_image && ! str_starts_with($roomType->featured_image, 'http') && Storage::disk('public')->exists($roomType->featured_image)) {
                 Storage::disk('public')->delete($roomType->featured_image);
             }
             $roomType->featured_image = $request->file('featured_image')->store('rooms', 'public');
+        } elseif ($request->filled('image_url')) {
+            $url = trim((string) $request->input('image_url'));
+            if ($roomType->featured_image && ! str_starts_with($roomType->featured_image, 'http') && Storage::disk('public')->exists($roomType->featured_image)) {
+                Storage::disk('public')->delete($roomType->featured_image);
+            }
+            $roomType->featured_image = $url;
+        } elseif (is_string($request->input('featured_image')) && ! empty($request->input('featured_image')) && str_starts_with($request->input('featured_image'), 'http')) {
+            $url = trim((string) $request->input('featured_image'));
+            if ($roomType->featured_image && ! str_starts_with($roomType->featured_image, 'http') && Storage::disk('public')->exists($roomType->featured_image)) {
+                Storage::disk('public')->delete($roomType->featured_image);
+            }
+            $roomType->featured_image = $url;
+        } elseif ($request->boolean('remove_image')) {
+            if ($roomType->featured_image && ! str_starts_with($roomType->featured_image, 'http') && Storage::disk('public')->exists($roomType->featured_image)) {
+                Storage::disk('public')->delete($roomType->featured_image);
+            }
+            $roomType->featured_image = null;
         }
 
         $roomType->update([

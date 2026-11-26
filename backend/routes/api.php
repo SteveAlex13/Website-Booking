@@ -103,11 +103,13 @@ Route::prefix('v1')->group(function () {
             // Room Types Management
             Route::post('/room-types', [RoomTypeController::class, 'store']);
             Route::put('/room-types/{id}', [RoomTypeController::class, 'update']);
+            Route::post('/room-types/{id}', [RoomTypeController::class, 'update']);
             Route::delete('/room-types/{id}', [RoomTypeController::class, 'destroy']);
 
             // Compatibility with /admin/services
             Route::post('/services', [RoomTypeController::class, 'store']);
             Route::put('/services/{id}', [RoomTypeController::class, 'update']);
+            Route::post('/services/{id}', [RoomTypeController::class, 'update']);
             Route::delete('/services/{id}', [RoomTypeController::class, 'destroy']);
 
             // Physical Room Units: create and delete

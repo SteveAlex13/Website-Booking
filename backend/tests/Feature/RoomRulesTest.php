@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Services\HotelBookingService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -252,5 +254,92 @@ class RoomRulesTest extends TestCase
                 'total_children' => 1,
             ])
             ->assertCreated();
+    }
+
+    public function test_super_admin_can_create_room_type_with_image_url(): void
+    {
+        $response = $this->actingAs($this->superAdmin)
+            ->postJson('/api/v1/admin/room-types', [
+                'name' => 'Villa Sunset Deluxe',
+                'description' => 'Villa dengan kolam privat dan pemandangan laut.',
+                'base_price_per_night' => 2500000,
+                'max_adults' => 4,
+                'max_children' => 2,
+                'room_size_sqm' => 90,
+                'bed_type' => '2 King Beds',
+                'total_rooms' => 3,
+                'image_url' => 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b',
+            ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('room_types', [
+            'name' => 'Villa Sunset Deluxe',
+            'featured_image' => 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b',
+        ]);
+    }
+
+    public function test_super_admin_can_create_room_type_with_uploaded_file(): void
+    {
+        Storage::fake('public');
+
+        $file = UploadedFile::fake()->image('deluxe_suite.jpg', 800, 600);
+
+        $response = $this->actingAs($this->superAdmin)
+            ->post('/api/v1/admin/room-types', [
+                'name' => 'Grand Ocean Suite',
+                'description' => 'Kamar mewah tepi pantai.',
+                'base_price_per_night' => 3000000,
+                'max_adults' => 2,
+                'max_children' => 1,
+                'room_size_sqm' => 60,
+                'bed_type' => '1 King Bed',
+                'total_rooms' => 4,
+                'featured_image' => $file,
+            ]);
+
+        $response->assertCreated();
+        $created = RoomType::where('name', 'Grand Ocean Suite')->first();
+        $this->assertNotNull($created);
+        $this->assertNotNull($created->featured_image);
+        Storage::disk('public')->assertExists($created->featured_image);
+    }
+
+    public function test_super_admin_can_update_room_type_with_new_image_or_remove_it(): void
+    {
+        Storage::fake('public');
+
+        // 1. Update with URL
+        $updateRes = $this->actingAs($this->superAdmin)
+            ->putJson("/api/v1/admin/room-types/{$this->roomType->id}", [
+                'name' => 'Deluxe King Renovated',
+                'base_price_per_night' => 600000,
+                'max_adults' => 2,
+                'max_children' => 1,
+                'room_size_sqm' => 38,
+                'bed_type' => '1 King Bed',
+                'total_rooms' => 2,
+                'image_url' => 'https://images.unsplash.com/photo-1590490360182-c33d57733427',
+            ]);
+
+        $updateRes->assertOk();
+        $this->roomType->refresh();
+        $this->assertSame('https://images.unsplash.com/photo-1590490360182-c33d57733427', $this->roomType->featured_image);
+
+        // 2. Remove image
+        $removeRes = $this->actingAs($this->superAdmin)
+            ->putJson("/api/v1/admin/room-types/{$this->roomType->id}", [
+                'name' => 'Deluxe King Renovated',
+                'base_price_per_night' => 600000,
+                'max_adults' => 2,
+                'max_children' => 1,
+                'room_size_sqm' => 38,
+                'bed_type' => '1 King Bed',
+                'total_rooms' => 2,
+                'remove_image' => true,
+            ]);
+
+        $removeRes->assertOk();
+        $this->roomType->refresh();
+        $this->assertNull($this->roomType->featured_image);
     }
 }

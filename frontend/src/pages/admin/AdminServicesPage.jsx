@@ -3,7 +3,7 @@ import { adminService } from '../../services/adminService';
 import { useToast } from '../../contexts/ToastContext';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import { formatRupiah, formatRoomSize } from '../../utils/format';
-import RoomImage from '../../components/common/RoomImage';
+import RoomImage, { resolveImageUrl } from '../../components/common/RoomImage';
 import {
   Plus,
   Edit2,
@@ -14,6 +14,9 @@ import {
   Check,
   DoorOpen,
   Search,
+  Upload,
+  Image as ImageIcon,
+  Link2,
 } from 'lucide-react';
 
 export default function AdminServicesPage() {
@@ -38,6 +41,13 @@ export default function AdminServicesPage() {
   const [isActive, setIsActive] = useState(true);
   const [selectedAmenities, setSelectedAmenities] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Photo State (Upload File or URL)
+  const [imageMode, setImageMode] = useState('file'); // 'file' | 'url'
+  const [imageFile, setImageFile] = useState(null);
+  const [imageUrl, setImageUrl] = useState('');
+  const [imagePreview, setImagePreview] = useState('');
+  const [removeExistingImage, setRemoveExistingImage] = useState(false);
 
   // Delete State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -83,6 +93,11 @@ export default function AdminServicesPage() {
     setTotalRooms(5);
     setIsActive(true);
     setSelectedAmenities(amenities.slice(0, 4).map((a) => a.id));
+    setImageMode('file');
+    setImageFile(null);
+    setImageUrl('');
+    setImagePreview('');
+    setRemoveExistingImage(false);
     setIsModalOpen(true);
   };
 
@@ -99,7 +114,54 @@ export default function AdminServicesPage() {
     setTotalRooms(item.total_rooms);
     setIsActive(item.is_active);
     setSelectedAmenities(item.amenities ? item.amenities.map((a) => a.id) : []);
+
+    const existing = item.image_url || item.featured_image || '';
+    setImageFile(null);
+    setRemoveExistingImage(false);
+    if (existing.startsWith('http')) {
+      setImageMode('url');
+      setImageUrl(existing);
+      setImagePreview(existing);
+    } else if (existing) {
+      setImageMode('file');
+      setImageUrl('');
+      setImagePreview(resolveImageUrl(existing) || existing);
+    } else {
+      setImageMode('file');
+      setImageUrl('');
+      setImagePreview('');
+    }
     setIsModalOpen(true);
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('File yang dipilih harus berupa gambar (JPG, PNG, WebP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Ukuran gambar maksimal 5 MB.');
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setRemoveExistingImage(false);
+  };
+
+  const handleUrlChange = (val) => {
+    setImageUrl(val);
+    setImageFile(null);
+    setImagePreview(val.trim());
+    setRemoveExistingImage(false);
+  };
+
+  const handleClearImage = () => {
+    setImageFile(null);
+    setImageUrl('');
+    setImagePreview('');
+    setRemoveExistingImage(true);
   };
 
   const toggleAmenity = (id) => {
@@ -112,26 +174,52 @@ export default function AdminServicesPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const payload = {
-        name,
-        description,
-        base_price_per_night: basePrice,
-        weekend_price_per_night: weekendPrice || null,
-        max_adults: maxAdults,
-        max_children: maxChildren,
-        room_size_sqm: sizeSqm,
-        bed_type: bedType,
-        total_rooms: totalRooms,
-        is_active: isActive,
-        amenities: selectedAmenities,
-      };
+      if (imageFile) {
+        const formData = new FormData();
+        formData.append('name', name);
+        if (description) formData.append('description', description);
+        formData.append('base_price_per_night', basePrice);
+        if (weekendPrice) formData.append('weekend_price_per_night', weekendPrice);
+        formData.append('max_adults', maxAdults);
+        formData.append('max_children', maxChildren);
+        formData.append('room_size_sqm', sizeSqm);
+        formData.append('bed_type', bedType);
+        formData.append('total_rooms', totalRooms);
+        formData.append('is_active', isActive ? '1' : '0');
+        selectedAmenities.forEach((id) => formData.append('amenities[]', id));
+        formData.append('featured_image', imageFile);
 
-      if (editingType) {
-        await adminService.updateRoomType(editingType.id, payload);
-        toast.success(`Tipe Kamar "${name}" berhasil diperbarui!`);
+        if (editingType) {
+          await adminService.updateRoomType(editingType.id, formData);
+          toast.success(`Tipe Kamar "${name}" berhasil diperbarui!`);
+        } else {
+          await adminService.createRoomType(formData);
+          toast.success(`Tipe Kamar "${name}" berhasil ditambahkan!`);
+        }
       } else {
-        await adminService.createRoomType(payload);
-        toast.success(`Tipe Kamar "${name}" berhasil ditambahkan!`);
+        const payload = {
+          name,
+          description,
+          base_price_per_night: basePrice,
+          weekend_price_per_night: weekendPrice || null,
+          max_adults: maxAdults,
+          max_children: maxChildren,
+          room_size_sqm: sizeSqm,
+          bed_type: bedType,
+          total_rooms: totalRooms,
+          is_active: isActive,
+          amenities: selectedAmenities,
+          image_url: imageUrl.trim() || null,
+          remove_image: removeExistingImage,
+        };
+
+        if (editingType) {
+          await adminService.updateRoomType(editingType.id, payload);
+          toast.success(`Tipe Kamar "${name}" berhasil diperbarui!`);
+        } else {
+          await adminService.createRoomType(payload);
+          toast.success(`Tipe Kamar "${name}" berhasil ditambahkan!`);
+        }
       }
 
       setIsModalOpen(false);
@@ -450,6 +538,120 @@ export default function AdminServicesPage() {
                     className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                     required
                   />
+                </div>
+
+                {/* Foto Utama Tipe Kamar (Upload File atau URL) */}
+                <div className="sm:col-span-2 space-y-3 border border-slate-200 rounded-2xl p-4 bg-slate-50/70">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
+                    <div>
+                      <label className="block text-xs font-black text-slate-800">
+                        Foto Kamar / Suite (Pilih File atau URL)
+                      </label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Anda dapat mengunggah file foto dari perangkat atau memasukkan link/URL gambar.
+                      </p>
+                    </div>
+
+                    {/* Mode Selector Tabs */}
+                    <div className="inline-flex p-1 bg-slate-200/80 rounded-xl self-start sm:self-auto text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setImageMode('file')}
+                        className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
+                          imageMode === 'file'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Upload className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Unggah File</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setImageMode('url')}
+                        className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
+                          imageMode === 'url'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Link2 className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Gunakan URL</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mode 1: File Upload */}
+                  {imageMode === 'file' && (
+                    <div>
+                      <label className="cursor-pointer flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 hover:border-amber-500 rounded-2xl bg-white hover:bg-amber-50/20 transition group">
+                        <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mb-2 group-hover:scale-110 transition">
+                          <Upload className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-700 group-hover:text-amber-700">
+                          {imageFile ? imageFile.name : 'Pilih file foto dari komputer atau HP'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 mt-1">
+                          Format JPG, PNG, atau WebP (Maksimal 5 MB)
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Mode 2: URL Input */}
+                  {imageMode === 'url' && (
+                    <div className="space-y-1.5">
+                      <div className="relative">
+                        <ImageIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
+                        <input
+                          type="url"
+                          value={imageUrl}
+                          onChange={(e) => handleUrlChange(e.target.value)}
+                          placeholder="https://images.unsplash.com/photo-... atau URL foto web"
+                          className="w-full text-xs pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Tips: Masukkan tautan gambar langsung (URL berawalan https://).
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Live Image Preview Card */}
+                  {imagePreview && (
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center gap-3 shadow-sm">
+                      <div className="w-20 h-16 rounded-lg overflow-hidden bg-slate-900 flex-shrink-0 border border-slate-200">
+                        <RoomImage
+                          src={imagePreview}
+                          alt="Preview foto kamar"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-bold text-slate-900 block truncate">
+                          {imageFile ? imageFile.name : imagePreview}
+                        </span>
+                        <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>Foto berhasil dipilih & siap disimpan</span>
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearImage}
+                        className="px-2.5 py-1 text-[11px] font-bold text-rose-600 hover:text-white hover:bg-rose-600 rounded-lg transition border border-rose-200"
+                        title="Hapus foto ini"
+                      >
+                        Hapus Foto
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">

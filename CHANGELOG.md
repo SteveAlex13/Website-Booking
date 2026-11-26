@@ -248,9 +248,56 @@ Semua pembaruan, penambahan fitur, perbaikan bug, dan optimasi pada sistem **The
      - **Matriks Popularitas Kamar & Layanan:** Tabel pemeringkatan tipe kamar dan add-on terlaris beserta tarif satuan, frekuensi pemesanan, estimasi kontribusi omset, dan pangsa pemesanan (*market share %*).
      - **Baris Ringkasan:** Formula akumulasi total frekuensi pemesanan dan total estimasi kontribusi omset.
 
+### 23. 🖨️ Format Ekspor / Cetak PDF Resmi Standar Audit Hotel Bintang Lima (Printable PMS Ledger)
+- **Deskripsi:** Memperbarui fungsi **Cetak / PDF** pada [`AdminReportsPage.jsx`](frontend/src/pages/admin/AdminReportsPage.jsx) yang sebelumnya hanya mencetak layar web biasa (beserta navbar, sidebar, filter, dan tombol) menjadi dokumen laporan keuangan resmi A4 siap unduh/cetak yang elegan, presisi, dan profesional.
+- **Pembaruan Layout Dokumen Cetak / PDF (`#printable-report`):**
+  - **Kop Surat Resmi Hotel (Hotel Letterhead):** Lambang hotel resmi, nama *HOTEL THE ROYAL NUSANTARA RESORT & SPA*, sub-brand resort & convention, alamat lengkap Nusa Dua Bali, nomor telepon, email resmi, nomor referensi dokumen unik audit, dan stempel status `Terverifikasi Sistem Keuangan (Audited)`.
+  - **Grid Metadata Audit (4 Kolom):** Periode pembukuan, tanggal & waktu penerbitan dokumen, total volume reservasi, dan mata uang IDR.
+  - **1. Indikator Kinerja Finansial Utama (KPI Overview):** Ringkasan kartu metrik formal mencakup total omset terverifikasi, jumlah reservasi, rerata nilai per reservasi (ADR), dan rasio pelunasan kasir front desk vs online Midtrans.
+  - **2. Rekapitulasi Bentuk Uang Masuk (Payment Inflows Breakdown):** Tabel formal penerimaan uang tunai kasir, QRIS EDC, Debit EDC, Kredit EDC, dan Midtrans Snap beserta persentase kontribusi dan baris total terverifikasi.
+  - **3. Matriks Distribusi Mesin EDC per Bank Mitra:** Tabel rincian perolehan EDC untuk BCA, BRI, BTN, dan Bank Mandiri.
+  - **4. Statistik Popularitas Tipe Kamar & Layanan:** Pemeringkatan tipe kamar dan layanan terlaris dengan tarif satuan, frekuensi order, dan estimasi omset.
+  - **5. Buku Besar Rincian Transaksi Reservasi Tamu:** Tabel pembukuan lengkap dengan kolom No, Kode Booking, Tanggal Pemesanan, Nama Tamu & Kontak, Kamar & Unit Fisik, Check-In, Check-Out, Durasi Malam, Nominal Tagihan, Metode Pelunasan, dan Status, diakhiri baris total akumulasi malam & nominal.
+  - **6. Lembar Pengesahan & Tanda Tangan Resmi (Sign-off Section):** Tiga kolom tanda tangan otorisasi bergaris titik-titik dan tanggal (*Dibuat Oleh: Front Desk & Night Auditor*, *Diverifikasi Oleh: Financial Controller / Kasir Utama*, *Disetujui Oleh: General Manager Hotel*) serta catatan kaki penafian audit PMS resmi.
+- **Penerapan Print Stylesheet Khusus (`@media print`):**
+  - Menyembunyikan seluruh sidebar, top navbar, filter toolbar, tombol kontrol, dan elemen web lainnya.
+  - Menampilkan `#printable-report` secara penuh berukuran A4 portrait dengan margin proporsional dan `print-color-adjust: exact`.
+  - Proteksi `page-break-inside: avoid` pada kartu metrik, tabel rekapitulasi, dan lembar tanda tangan agar tata letak halaman tidak terpotong saat disimpan sebagai file PDF.
+
+### 24. 🖼️ Fleksibilitas Foto Tipe Kamar: Dukungan Unggah File Lokal & Input URL Gambar
+- **Deskripsi:** Menambahkan kemampuan upload foto tipe kamar/suite dari file perangkat (komputer/HP) maupun input tautan gambar URL web pada form tambah & edit tipe kamar ([`AdminServicesPage.jsx`](frontend/src/pages/admin/AdminServicesPage.jsx)) serta controller backend ([`RoomTypeController.php`](backend/app/Http/Controllers/Api/V1/RoomTypeController.php)).
+- **Fitur Baru & Pembaruan:**
+  - **Tab Switcher Sumber Foto (File vs URL):** Pengguna dapat memilih mode input foto dengan satu klik:
+    - *📁 Unggah File:* Dropzone interaktif untuk memilih file foto langsung dari perangkat (JPG, PNG, WebP hingga 5 MB).
+    - *🔗 Gunakan URL:* Input field tautan URL langsung untuk foto dari Unsplash, Pexels, atau CDN eksternal.
+  - **Live Photo Preview & Tombol Hapus:** Menampilkan thumbnail kartu foto kamar seketika saat file dipilih atau URL diketik, dilengkapi tombol *"Hapus Foto"* untuk menghapus atau mengganti foto.
+  - **Backend Support Fleksibel (File Storage & URL):**
+    - Mendukung penerimaan file `featured_image` via `multipart/form-data` yang disimpan ke `storage/app/public/rooms` secara aman.
+    - Mendukung penerimaan string URL gambar `image_url` untuk tautan eksternal.
+    - Otomatis menghapus file foto fisik lama saat pengguna mengganti atau menghapus foto kamar.
+  - **Resolusi URL Cerdas di Frontend ([`RoomImage.jsx`](frontend/src/components/common/RoomImage.jsx)):** Helper `resolveImageUrl` otomatis mendeteksi URL penuh (`https://`), `blob:`, maupun subpath penyimpanan lokal (`storage/rooms/...`). Ditambahkan juga atribut performa `loading="lazy"` dan `decoding="async"`.
+  - **Pengujian Otomatis:** Menambahkan 3 skenario uji baru di [`RoomRulesTest.php`](backend/tests/Feature/RoomRulesTest.php) (`test_super_admin_can_create_room_type_with_image_url`, `test_super_admin_can_create_room_type_with_uploaded_file`, `test_super_admin_can_update_room_type_with_new_image_or_remove_it`).
+
+### 25. 🖼️ Penetapan Foto URL Langsung untuk Seluruh Tipe Kamar
+- **Deskripsi:** Menetapkan foto beresolusi tinggi langsung melalui URL web (*Unsplash luxury resort & suite*) ke seluruh tipe kamar yang ada di database hotel serta memperbarui `DatabaseSeeder.php`.
+- **Daftar Foto Tipe Kamar yang Diterapkan:**
+  1. **Deluxe Ocean View King Room:**
+     - URL: `https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80`
+  2. **Executive Twin Garden Suite:**
+     - URL: `https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80`
+  3. **Royal Honeymoon Suite with Jacuzzi:**
+     - URL: `https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1200&q=80`
+  4. **Presidential Ocean Penthouse Suite:**
+     - URL: `https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1200&q=80`
+  5. **Private Pool Family Villa:**
+     - URL: `https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80`
+- **File Diperbarui:**
+  - [`backend/database/seeders/DatabaseSeeder.php`](file:///c:/laragon/www/laravel-booking/backend/database/seeders/DatabaseSeeder.php)
+  - [`backend/database/seeders/RoomTypeImageSeeder.php`](file:///c:/laragon/www/laravel-booking/backend/database/seeders/RoomTypeImageSeeder.php)
+
 ---
 
 ## 🧪 Status Verifikasi Pengujian
-- **Backend Tests:** **92 test / 437 assertions lolos (100% Passed)** melalui PHPUnit.
-- **Frontend Build:** **Vite build lolos tanpa error (1.09s)**.
+- **Backend Tests:** **95 test / 447 assertions lolos (100% Passed)** melalui PHPUnit.
+- **Frontend Build:** **Vite build lolos tanpa error (1.15s)**.
 
