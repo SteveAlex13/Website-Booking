@@ -58,7 +58,7 @@ export default function AdminCategoriesPage() {
     setName(item.name);
     setDescription(item.description || '');
     setPrice(item.price);
-    setPriceType(item.price_type || 'per_stay');
+    setPriceType(item.price_type === 'per_night' ? 'per_night' : 'per_stay');
     setIsActive(item.is_active);
     setIsModalOpen(true);
   };
@@ -68,11 +68,11 @@ export default function AdminCategoriesPage() {
     setSubmitting(true);
     try {
       const payload = {
-        name,
-        description,
-        price,
+        name: name.trim(),
+        description: description?.trim() || '',
+        price: Number(price),
         price_type: priceType,
-        is_active: isActive,
+        is_active: Boolean(isActive),
       };
 
       if (editingExtra) {
@@ -193,7 +193,7 @@ export default function AdminCategoriesPage() {
 
               <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-[11px] text-slate-400 font-semibold">
-                  Tipe: {extra.price_type === 'per_stay' ? 'Per Masa Inap' : 'Per Malam'}
+                  Tipe: {extra.price_type === 'per_night' ? 'Per Malam' : 'Per Masa Inap'}
                 </span>
                 <span className="text-sm font-black text-amber-700">
                   {formatRupiah(extra.price)}

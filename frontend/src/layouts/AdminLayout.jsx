@@ -27,11 +27,46 @@ import {
   UserCog,
   User,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 export default function AdminLayout() {
   const { user, isAuthenticated, isAdmin, loading, logout } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('admin_sidebar_open');
+      if (saved !== null) {
+        return saved === 'true';
+      }
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
+
+  const toggleSidebar = () => {
+    setSidebarOpen((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('admin_sidebar_open', String(next));
+      }
+      return next;
+    });
+  };
+
+  const closeSidebar = () => {
+    setSidebarOpen(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('admin_sidebar_open', 'false');
+    }
+  };
+
+  const handleNavClick = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      closeSidebar();
+    }
+  };
+
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
@@ -207,44 +242,46 @@ export default function AdminLayout() {
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm lg:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={closeSidebar}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 text-slate-300 flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 border-r border-slate-900 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 text-slate-300 flex flex-col transition-transform duration-300 ease-in-out border-r border-slate-900 shadow-2xl lg:shadow-none ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Brand */}
-        <div className="h-20 px-6 flex items-center justify-between border-b border-slate-900">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-yellow-500 flex items-center justify-center text-white shadow-md shadow-amber-500/20">
+        <div className="h-20 px-5 flex items-center justify-between border-b border-slate-900">
+          <div className="flex items-center space-x-3 overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-yellow-500 flex items-center justify-center text-white shadow-md shadow-amber-500/20 shrink-0">
               <Hotel className="w-5 h-5" />
             </div>
-            <div>
-              <span className="font-extrabold text-white tracking-tight text-sm block">Royal Nusantara</span>
+            <div className="truncate">
+              <span className="font-extrabold text-white tracking-tight text-sm block truncate">Royal Nusantara</span>
               <span className="text-[10px] text-amber-400 font-mono tracking-wider uppercase flex items-center space-x-1">
                 <span>Front Desk PMS</span>
               </span>
             </div>
           </div>
           <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-1 rounded-lg text-slate-400 hover:text-white"
+            type="button"
+            onClick={closeSidebar}
+            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition flex items-center justify-center border border-slate-800 hover:border-slate-700 active:scale-95 shrink-0"
+            title="Tutup Sidebar (Perbesar Tampilan)"
           >
-            <X className="w-5 h-5" />
+            <ChevronLeft className="w-5 h-5 text-slate-300" />
           </button>
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto custom-scrollbar-dark">
           {/* Top Single Item: Dashboard */}
           <NavLink
             to="/admin/dashboard"
             end
-            onClick={() => setSidebarOpen(false)}
+            onClick={handleNavClick}
             className={({ isActive }) =>
               `flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                 isActive
@@ -303,7 +340,7 @@ export default function AdminLayout() {
                           key={item.to}
                           to={item.to}
                           end={item.end}
-                          onClick={() => setSidebarOpen(false)}
+                          onClick={handleNavClick}
                           className={({ isActive }) =>
                             `flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition ${
                               isActive
@@ -328,7 +365,7 @@ export default function AdminLayout() {
             <div className="pt-2">
               <NavLink
                 to="/admin/schedules"
-                onClick={() => setSidebarOpen(false)}
+                onClick={handleNavClick}
                 className={({ isActive }) =>
                   `flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                     isActive
@@ -360,22 +397,34 @@ export default function AdminLayout() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 lg:pl-64 flex flex-col min-h-screen">
+      <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out ${
+        sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
+      }`}>
         {/* Top Navbar */}
         <header className="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-amber-500/20 border border-slate-200 shadow-sm active:scale-95"
+              title={sidebarOpen ? "Tutup Sidebar" : "Buka Sidebar (Menu Navigasi)"}
+            >
+              <Menu className="w-5 h-5" />
+              {!sidebarOpen && (
+                <span className="text-xs font-bold text-slate-700 hidden sm:inline-flex items-center space-x-1">
+                  <span>Menu Sidebar</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                </span>
+              )}
+            </button>
 
-          <div className="hidden lg:flex items-center space-x-3 text-xs text-slate-500">
-            <span className="font-semibold text-slate-800">Sistem Manajemen Hotel & Front Desk</span>
-            <span>•</span>
-            <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full font-bold border border-amber-200">
-              Midtrans Snap Integrated
-            </span>
+            <div className="hidden sm:flex items-center space-x-3 text-xs text-slate-500">
+              <span className="font-semibold text-slate-800">Sistem Manajemen Hotel & Front Desk</span>
+              <span>•</span>
+              <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full font-bold border border-amber-200">
+                Midtrans Snap Integrated
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -484,7 +533,7 @@ export default function AdminLayout() {
         </header>
 
         {/* Page Body */}
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-4 sm:p-8 max-w-[1600px] mx-auto w-full transition-all duration-300">
           <Outlet />
         </main>
       </div>

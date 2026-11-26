@@ -782,8 +782,8 @@ export default function BookingFlowPage() {
                   {extraServices.map((extra) => {
                     const isSelected = !!selectedExtras[extra.id];
                     const qty = selectedExtras[extra.id] || 1;
-                    const isPerStay = extra.price_type === 'per_stay';
-                    const itemSubtotal = extra.price * qty * (isPerStay ? 1 : nights);
+                    const isPerNight = extra.price_type === 'per_night';
+                    const itemSubtotal = extra.price * qty * (isPerNight ? nights : 1);
 
                     return (
                       <div
@@ -812,7 +812,7 @@ export default function BookingFlowPage() {
                               <span className="text-xs font-black text-amber-700 mt-1 block">
                                 +{formatRupiah(extra.price)}{' '}
                                 <span className="text-[10px] text-slate-400 font-normal">
-                                  ({isPerStay ? '1x per masa inap' : `per malam (x${nights} malam)`})
+                                  ({isPerNight ? `per malam (x${nights} malam)` : '1x per masa inap'})
                                 </span>
                               </span>
                             </div>

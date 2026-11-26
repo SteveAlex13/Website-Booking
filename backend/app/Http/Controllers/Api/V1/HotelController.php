@@ -74,9 +74,14 @@ class HotelController extends Controller
             'name' => 'required|string|max:150',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
-            'price_type' => 'required|in:per_booking,per_night,per_guest',
+            'price_type' => 'required|in:per_booking,per_night,per_guest,per_stay',
             'icon' => 'nullable|string',
             'is_active' => 'boolean',
+        ], [
+            'price_type.in' => 'Model perhitungan tarif tidak valid. Pilih per masa inap atau per malam.',
+            'price.required' => 'Harga add-on wajib diisi.',
+            'price.numeric' => 'Harga add-on harus berupa angka nominal.',
+            'price.min' => 'Harga add-on tidak boleh kurang dari 0.',
         ]);
 
         $extra = ExtraService::create($validated);
@@ -99,9 +104,14 @@ class HotelController extends Controller
             'name' => 'required|string|max:150',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
-            'price_type' => 'required|in:per_booking,per_night,per_guest',
+            'price_type' => 'required|in:per_booking,per_night,per_guest,per_stay',
             'icon' => 'nullable|string',
             'is_active' => 'boolean',
+        ], [
+            'price_type.in' => 'Model perhitungan tarif tidak valid. Pilih per masa inap atau per malam.',
+            'price.required' => 'Harga add-on wajib diisi.',
+            'price.numeric' => 'Harga add-on harus berupa angka nominal.',
+            'price.min' => 'Harga add-on tidak boleh kurang dari 0.',
         ]);
 
         $extra->update($validated);

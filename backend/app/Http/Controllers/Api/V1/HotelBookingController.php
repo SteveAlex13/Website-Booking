@@ -283,6 +283,23 @@ class HotelBookingController extends Controller
      */
     public function adminIndex(Request $request): JsonResponse
     {
+        // Auto-mark overdue confirmed bookings as NO_SHOW (Hangus) so database status stays in sync
+        $overdueBookings = Booking::where('status', Booking::STATUS_CONFIRMED)
+            ->whereDate('check_out_date', '<=', Carbon::today())
+            ->get();
+
+        foreach ($overdueBookings as $overdue) {
+            try {
+                $this->bookingService->markNoShow(
+                    $overdue,
+                    null,
+                    'Otomatis ditandai Hangus oleh sistem karena melewati batas tanggal menginap.'
+                );
+            } catch (\Throwable) {
+                // Ignore any concurrency conflicts
+            }
+        }
+
         $query = Booking::with(['user', 'roomType', 'assignedRoom', 'latestPayment']);
 
         if ($request->filled('status')) {

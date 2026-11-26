@@ -77,6 +77,19 @@ class PaymentShowTest extends TestCase
             ->getJson('/api/v1/admin/payments?status=PAID')
             ->assertOk()
             ->assertJsonCount(0, 'data.data');
+
+        // Test date range filter
+        $today = now()->toDateString();
+        $this->asUser($admin)
+            ->getJson("/api/v1/admin/payments?start_date={$today}&end_date={$today}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data');
+
+        $yesterday = now()->subDays(2)->toDateString();
+        $this->asUser($admin)
+            ->getJson("/api/v1/admin/payments?start_date={$yesterday}&end_date={$yesterday}")
+            ->assertOk()
+            ->assertJsonCount(0, 'data.data');
     }
 
     public function test_customer_cannot_list_all_payments(): void
@@ -98,5 +111,29 @@ class PaymentShowTest extends TestCase
         $user = User::factory()->create(['role' => 'customer']);
 
         $this->asUser($user)->getJson('/api/v1/payments/999999')->assertNotFound();
+    }
+
+    public function test_payment_sanitizes_sensitive_keys_from_provider_response(): void
+    {
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $payment = $this->createPendingPayment(User::factory()->create(['role' => 'customer']));
+        $payment->provider_response = [
+            'order_id' => $payment->order_id,
+            'signature_key' => 'secret-sha512-hash-1234567890',
+            'merchant_id' => 'M937749573',
+            'approval_code' => '1793867145570',
+            'masked_card' => '48111111-1114',
+            'status_code' => '200',
+            'gross_amount' => '11000.00',
+        ];
+        $payment->save();
+
+        $response = $this->asUser($admin)->getJson("/api/v1/payments/{$payment->id}");
+        $response->assertOk();
+        $response->assertJsonMissing(['signature_key']);
+        $response->assertJsonMissing(['merchant_id']);
+        $response->assertJsonMissing(['approval_code']);
+        $response->assertJsonPath('data.provider_response.order_id', $payment->order_id);
+        $response->assertJsonPath('data.provider_response.masked_card', '4811-****-****-1114');
     }
 }

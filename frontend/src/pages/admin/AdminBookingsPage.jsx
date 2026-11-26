@@ -467,13 +467,10 @@ export default function AdminBookingsPage() {
                       </td>
 
                       <td className="px-6 py-4">
-                        {isConfirmed && stayStatus === 'OVERDUE' ? (
-                          <div className="space-y-0.5">
-                            <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-300">
-                              Lewat Jadwal
-                            </span>
-                            <div className="text-[10px] text-rose-500 font-semibold">Reservasi Hangus</div>
-                          </div>
+                        {(b.status === 'NO_SHOW' || (isConfirmed && stayStatus === 'OVERDUE')) ? (
+                          <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200">
+                            Hangus
+                          </span>
                         ) : (
                           <span
                             className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}

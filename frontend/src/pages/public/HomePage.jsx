@@ -433,7 +433,7 @@ export default function HomePage() {
                     <h4 className="font-bold text-slate-900 text-sm">{extra.name}</h4>
                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">{extra.description}</p>
                     <span className="text-xs font-black text-amber-700 mt-2 block">
-                      +{formatRupiah(extra.price)} ({extra.price_type === 'per_stay' ? 'per masa inap' : 'per malam'})
+                      +{formatRupiah(extra.price)} ({extra.price_type === 'per_night' ? 'per malam' : 'per masa inap'})
                     </span>
                   </div>
                 </div>

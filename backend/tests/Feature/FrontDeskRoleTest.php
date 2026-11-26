@@ -376,4 +376,47 @@ class FrontDeskRoleTest extends TestCase
 
         $this->assertSame(Booking::STATUS_NO_SHOW, $overdueBooking->fresh()->status);
     }
+
+    public function test_super_admin_can_create_and_update_extra_service_with_per_stay(): void
+    {
+        $this->actingAs($this->superAdmin);
+
+        $payload = [
+            'name' => 'Extra Facial and Sauna',
+            'description' => 'Enjoy your Day',
+            'price' => 500000,
+            'price_type' => 'per_stay',
+            'is_active' => true,
+        ];
+
+        $response = $this->postJson('/api/v1/admin/extra-services', $payload);
+        $response->assertStatus(201)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'name' => 'Extra Facial and Sauna',
+                    'price' => '500000.00',
+                    'price_type' => 'per_stay',
+                ],
+            ]);
+
+        $createdId = $response->json('data.id');
+
+        // Update to per_night
+        $updateResponse = $this->putJson("/api/v1/admin/extra-services/{$createdId}", [
+            'name' => 'Extra Facial and Sauna Updated',
+            'description' => 'Enjoy your Day More',
+            'price' => 600000,
+            'price_type' => 'per_night',
+            'is_active' => true,
+        ]);
+
+        $updateResponse->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'price_type' => 'per_night',
+                ],
+            ]);
+    }
 }

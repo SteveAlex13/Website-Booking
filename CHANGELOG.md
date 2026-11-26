@@ -144,6 +144,93 @@ Semua pembaruan, penambahan fitur, perbaikan bug, dan optimasi pada sistem **The
     - *Panduan Tambah Add-On Susulan:* Kartu penjelasan bahwa tamu tetap dapat menambah fasilitas ekstra (sarapan buffet, airport pickup, extra bed, spa) saat check-in di meja Front Desk dengan pelunasan tunai/EDC di tempat.
     - *Penjelasan Status Diskon:* Keterangan resmi bahwa diskon kupon promo telah sukses memotong tagihan, kupon kini berstatus terpakai untuk reservasi ini, dan add-on susulan yang dipesan di tempat berlaku tarif normal hotel.
 
+### 12. 🎨 Kustomisasi Scrollbar Minimalis & Ramping (Thin Modern Scrollbar)
+- **Deskripsi:** Mengganti tampilan scrollbar default browser/Windows yang tebal dan kaku menjadi scrollbar ramping, minimalis, dan elegan di seluruh antarmuka web hotel.
+- **Implementasi:**
+  - **Global Minimalist Scrollbar ([`index.css`](frontend/src/index.css)):**
+    - Menggunakan standar CSS modern `scrollbar-width: thin` dan `scrollbar-color`.
+    - Fallback WebKit (`::-webkit-scrollbar` width/height 6px, track transparan, thumb rounded semi-transparan `rgba(148, 163, 184, 0.4)` dengan efek hover halus).
+    - Otomatis berlaku untuk seluruh halaman utama, tabel data, modal, dan elemen scrollable lainnya.
+  - **Dark Surface Scrollbar ([`AdminLayout.jsx`](frontend/src/layouts/AdminLayout.jsx)):**
+    - Class utility `.custom-scrollbar-dark` khusus untuk bilah navigasi Sidebar Admin berlatar gelap (`bg-slate-950`), dengan thumb transparan putih (`rgba(255, 255, 255, 0.18)`) berukuran 5px sehingga menyatu mulus tanpa garis putih tebal yang mengganggu.
+
+### 13. 📐 Fitur Tutup/Buka Sidebar Admin (Collapsible Sidebar for Wide View)
+- **Deskripsi:** Menambahkan tombol ciutkan/tutup sidebar pada header sidebar admin (`<`) dan tombol buka menu (`Menu`) di navbar utama agar staf front desk dan admin dapat memperluas tabel reservasi dan laporan finansial hingga lebar maksimal monitor.
+- **Implementasi:**
+  - **Tombol Tutup Sidebar ([`AdminLayout.jsx`](frontend/src/layouts/AdminLayout.jsx)):** Tombol panah `<` (`ChevronLeft`) di pojok kanan atas sidebar samping judul Royal Nusantara. Saat diklik, sidebar bergeser mulus menutup ke kiri (`-translate-x-full`).
+  - **Area Konten Melebar Otomatis:** Konten utama otomatis menyesuaikan padding dari `lg:pl-64` menjadi `lg:pl-0` dengan transisi halus (`transition-all duration-300`) serta batas lebar diperluas hingga `1600px` untuk tampilan tabel yang sangat leluasa.
+  - **Tombol Buka Kembali di Navbar:** Terdapat tombol `Menu` + badge *"Menu Sidebar"* di header atas untuk membuka kembali sidebar kapan saja.
+  - **Penyimpanan Preferensi (`localStorage`):** Preferensi status buka/tutup sidebar disimpan di browser sehingga tidak kembali terbuka secara otomatis saat berpindah halaman atau merefresh web.
+
+### 14. 🏷️ Penyederhanaan Status Reservasi Terlewat Menjadi Badge Tunggal "Hangus"
+- **Deskripsi:** Menyederhanakan tampilan kolom Status pada tabel reservasi Front Desk untuk booking yang melewati masa menginap tanpa check-in agar seragam dan rapi dengan badge tunggal `Hangus`.
+- **Implementasi:**
+  - **Tampilan Badge Tunggal ([`AdminBookingsPage.jsx`](frontend/src/pages/admin/AdminBookingsPage.jsx)):** Menghapus blok status bertingkat `[Lewat Jadwal]` + teks kecil `Reservasi Hangus`, dan menggantinya dengan badge tunggal berlabel **`Hangus`** (`bg-rose-50 text-rose-700 border-rose-200`) yang rapi dan konsisten dengan tab filter *"Hangus"*.
+  - **Auto-Sync Status Database ([`HotelBookingController.php`](backend/app/Http/Controllers/Api/V1/HotelBookingController.php)):** Pada endpoint `adminIndex`, sistem secara otomatis memindai dan menyinkronkan setiap booking berstatus `CONFIRMED` yang telah melewati tanggal checkout (`check_out_date <= hari ini`) menjadi status `NO_SHOW` (Hangus) beserta pembatalan sisa tagihan tertunda dan pencatatan riwayat audit.
+
+### 15. 🛠️ Perbaikan Validasi Tambah/Edit Layanan Add-On (Price Type "Per Masa Inap")
+- **Masalah:** Saat admin menyimpan layanan add-on baru dengan memilih model tarif *"Per Masa Inap (Flat Sekali Bayar)"*, muncul error `The selected price type is invalid.`
+- **Penyebab:** Frontend mengirimkan nilai `price_type: 'per_stay'`, sedangkan aturan validasi Laravel di backend controller ([`HotelController.php`](backend/app/Http/Controllers/Api/V1/HotelController.php)) sebelumnya hanya menerima `in:per_booking,per_night,per_guest`.
+- **Solusi & Implementasi:**
+  - **Backend Controller ([`HotelController.php`](backend/app/Http/Controllers/Api/V1/HotelController.php)):** Menambahkan `per_stay` ke dalam aturan validasi `price_type` pada fungsi `storeExtraService` dan `updateExtraService`, disertai pesan validasi berbahasa Indonesia.
+  - **Form Sanitasi Data ([`AdminCategoriesPage.jsx`](frontend/src/pages/admin/AdminCategoriesPage.jsx)):** Memastikan nilai harga (`price`) diparsing sebagai angka nominal bersih (`Number(price)`), trimming teks nama & deskripsi, serta standarisasi penentuan label *"Per Masa Inap"* vs *"Per Malam"*.
+  - **Konsistensi Perhitungan Tarif Tamu ([`BookingFlowPage.jsx`](frontend/src/pages/customer/BookingFlowPage.jsx) & [`HomePage.jsx`](frontend/src/pages/public/HomePage.jsx)):** Memastikan bahwa seluruh add-on non-malam (`per_stay`, `per_booking`, `per_guest`) dihitung flat 1x dan berlabel *"1x per masa inap"* tanpa terjadi salah pengalian jumlah malam.
+  - **Automated Feature Test ([`FrontDeskRoleTest.php`](backend/tests/Feature/FrontDeskRoleTest.php)):** Menambahkan unit & feature test untuk memastikan Super Admin dapat membuat dan memperbarui add-on dengan model `per_stay` dan `per_night` secara sempurna.
+
+### 16. 🛡️ Sanitasi Keamanan Data Response Payload Pembayaran (Signature & Merchant Protection)
+- **Masalah:** Pada modal *"Detail Transaksi Midtrans"* di halaman Manajemen Pembayaran Admin, tampilan JSON mentah `Response Payload Terakhir` mengekspos data sensitif internal gateway seperti `signature_key` (kunci hash rahasia server), `merchant_id`, dan `approval_code` otorisasi perbankan.
+- **Solusi & Implementasi:**
+  - **Backend Model Sanitization ([`Payment.php`](backend/app/Models/Payment.php)):** Menambahkan Accessor dan Mutator otomatis pada atribut `provider_response` menggunakan `Attribute::make()`. Secara otomatis menghapus parameter sensitif (`signature_key`, `merchant_id`, `approval_code`) saat serialisasi ke API maupun saat penyimpanan baru ke database, serta menerapkan masking standar PCI DSS pada nomor kartu (`4811-****-****-1114`).
+  - **Frontend Client Sanitization ([`AdminPaymentsPage.jsx`](frontend/src/pages/admin/AdminPaymentsPage.jsx)):** Menambahkan fungsi pembersih lapis kedua `getSanitizedPayload()` dan menyematkan badge status `🛡️ Parameter Sensitif & Signature Terlindungi` pada tampilan payload modal agar staf/admin mendapat kepastian bahwa kredensial rahasia terlindungi.
+  - **Automated Feature Test ([`PaymentShowTest.php`](backend/tests/Feature/PaymentShowTest.php)):** Menambahkan pengujian integrasi `test_payment_sanitizes_sensitive_keys_from_provider_response` yang memastikan kunci-kunci sensitif tersebut terbukti hilang (`assertJsonMissing`) pada respons endpoint API.
+
+### 17. ✨ Redesain Modal Detail Transaksi (Opsi 3: Minimalis, Bersih & Ramah Operasional)
+- **Deskripsi:** Mengganti tampilan modal inspeksi transaksi pembayaran pada [`AdminPaymentsPage.jsx`](frontend/src/pages/admin/AdminPaymentsPage.jsx) sesuai arahan pengguna (Opsi 3 Minimalis) dengan menghilangkan istilah teknis programmer dan kotak hitam JSON mentah.
+- **Perubahan Tampilan:**
+  - **Menghapus Blok Hitam JSON:** Kotak hitam `Response Payload Terakhir` dihilangkan sepenuhnya, sehingga tampilan tidak lagi terlihat seperti layar *debug* pengembang.
+  - **Menghilangkan Istilah Teknis Asing:** UUID panjang mentah (*Midtrans Transaction ID*), *Status Provider* (`capture`/`settlement`), dan *Fraud Status* (`accept`) diganti menjadi informasi bisnis yang relevan bagi hotel.
+  - **Kartu Ringkasan Finansial:** Menampilkan kotak sorotan nominal bersih (`formatRupiah`) dan badge status resmi pelunasan (*Lunas*, *Menunggu Pembayaran*, dll).
+  - **Daftar Informasi Minimalis & Jelas:**
+    - *No. Referensi (Order ID):* Kode order transaksi berlatar abu-abu rapi.
+    - *Kode Reservasi:* Link/badge kode booking hotel (`HTL-XXXXX`).
+    - *Nama Tamu & Tipe Kamar:* Identitas pemesan dan unit kamar terkait.
+    - *Metode Pembayaran Ramah Manusia:* Format nama metode yang jelas (misal: *Kartu Kredit (4811-****-1114)*, *QRIS Digital*, *Virtual Account*, atau *Tunai / Kasir Front Desk*).
+    - *Waktu Pelunasan:* Tanggal dan jam pelunasan transaksi.
+    - *Status Verifikasi:* Badge hijau `Terverifikasi Berhasil & Aman`.
+
+### 18. 📊 Optimasi Skala & Redesain Kompak Laporan Finansial
+- **Deskripsi:** Menyesuaikan proporsi halaman [`AdminReportsPage.jsx`](frontend/src/pages/admin/AdminReportsPage.jsx) yang sebelumnya terlalu besar dan memakan ruang vertikal layar secara berlebihan.
+- **Pembaruan:**
+  - **Toolbar Filter Cerdas & Tombol Preset:** Menggantikan kotak filter tanggal besar dengan toolbar ramping yang dilengkapi tombol preset instan (*Bulan Ini*, *Bulan Lalu*, *7 Hari*, *30 Hari*) sehingga staf dapat berganti rentang waktu dengan 1 klik.
+  - **Redesain Kartu KPI Proporsional (Grid 4 Kolom):** Mengubah 2 kartu raksasa sebelumnya menjadi 4 kartu metrik proporsional (*Total Pendapatan Terverifikasi*, *Total Reservasi*, *Rata-Rata Nilai per Booking*, dan *Layanan Terlaris*), mengurangi ketinggian vertikal hingga 45%.
+  - **Sleek Payment Inflows Bar:** Mempercantik bar proporsi arus kas (*Tunai*, *QRIS*, *Debit*, *Kredit*, *Midtrans*) menjadi bilah 10px yang anggun dan 5 kartu kanal pembayaran yang kompak.
+  - **Tabel & Ranking Layanan Ramping:** Mengurangi padding tabel (*px-3.5 py-2.5*) agar daftar reservasi dapat terlihat langsung tanpa harus banyak scroll.
+
+### 19. 💳 Peningkatan Desain Halaman Transaksi Pembayaran (Hotel PMS Standard)
+- **Deskripsi:** Mempercantik antarmuka [`AdminPaymentsPage.jsx`](frontend/src/pages/admin/AdminPaymentsPage.jsx) agar berstandar hotel mewah dan selaras dengan halaman operasional lainnya.
+- **Pembaruan:**
+  - **Mini KPI Strip Pembayaran:** Menambahkan 3 kartu ringkasan cepat di bagian atas (*Total Transaksi Lunas*, *Menunggu Pelunasan*, dan *Antrean Refund*).
+  - **Filter Status Berbentuk Tab Pills:** Menggantikan dropdown `<select>` standar dengan tombol filter pill interaktif (*Semua Status*, *Lunas (PAID)*, *Menunggu Bayar*, *Perlu Refund*, dll) lengkap dengan badge hitungan antrean refund.
+  - **Search Bar Modern Berfitur Reset:** Input pencarian responsif dengan ikon search dan tombol clear `✕`.
+  - **Estetika Tabel & Badge Metode Berikon:** Menyempurnakan baris tabel dengan badge metode pembayaran berikon (*Tunai*, *QRIS*, *Debit EDC*, *CC EDC*, *Snap*) serta tombol aksi *"Detail"* dan *"Proses Refund"* yang elegan.
+
+### 20. 📅 Penambahan Filter Rentang Tanggal & Preset pada Transaksi Pembayaran
+- **Deskripsi:** Menambahkan fitur filter tanggal (mirip dengan Laporan Finansial) pada halaman Transaksi Pembayaran ([`AdminPaymentsPage.jsx`](frontend/src/pages/admin/AdminPaymentsPage.jsx)) dan backend controller ([`PaymentController.php`](backend/app/Http/Controllers/Api/V1/PaymentController.php)).
+- **Fitur Baru:**
+  - **Tombol Preset Instan:** Staf dapat menyaring transaksi dengan 1 klik: *Bulan Ini*, *Bulan Lalu*, *7 Hari*, *30 Hari*, atau *Reset Tanggal*.
+  - **Filter Kalender Fleksibel:** Form input tanggal *Dari* dan *Sampai* untuk memilih rentang kustom.
+  - **Backend Support:** Endpoint `adminIndex` kini mendukung parameter `start_date` dan `end_date` untuk query berbasis tanggal transaksi.
+  - **Pengujian:** Pengujian integrasi `test_admin_can_filter_payments_by_date_range` ditambahkan di [`PaymentShowTest.php`](backend/tests/Feature/PaymentShowTest.php) dan lulus 100%.
+
+### 21. 🧹 Pembersihan Kontrol Refund pada Halaman Transaksi Pembayaran
+- **Deskripsi:** Menghapus seluruh elemen dan tombol refund dari [`AdminPaymentsPage.jsx`](frontend/src/pages/admin/AdminPaymentsPage.jsx) sesuai instruksi pengguna agar halaman murni fokus pada pencatatan dan monitoring mutasi transaksi pembayaran.
+- **Pembersihan:**
+  - Menghapus tombol aksi *"Proses Refund"* dari tabel transaksi pembayaran.
+  - Menghapus banner peringatan oranye antrean refund.
+  - Mengganti kartu KPI ke-3 dari *"Pengembalian Dana (Refund)"* menjadi *"Total Transaksi Tercatat"* (dengan ikon receipt dan jumlah transaksi pada filter aktif).
+  - Menghapus tab filter status `REFUND_PENDING` dan `REFUNDED` dari deretan tab status.
+  - Menghapus komponen modal konfirmasi refund (`ConfirmModal`) dan seluruh state pendukungnya.
+
 ---
 
 ## 🧪 Status Verifikasi Pengujian
